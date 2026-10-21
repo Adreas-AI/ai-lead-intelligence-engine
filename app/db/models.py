@@ -1,6 +1,7 @@
 """SQLAlchemy ORM models.
 
-A *lead* is a ``Company``. Every pipeline stage appends its own record
+A *lead* is a ``Company``, evaluated against one Ideal Customer Profile
+(``profile``). Every pipeline stage appends its own record
 (enrichment, score, draft, CRM sync) so history and provenance are preserved,
 while the latest score/status is denormalised onto ``Company`` for fast filtering.
 """
@@ -94,6 +95,7 @@ class Company(Base):
     source_ref: Mapped[str | None] = mapped_column(String(255))
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    profile: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(32), default=LeadStatus.NEW, index=True)
     score: Mapped[int | None] = mapped_column(Integer, index=True)
     qualification_status: Mapped[str | None] = mapped_column(String(32))
@@ -144,7 +146,7 @@ class Enrichment(Base):
     products: Mapped[list[Any]] = mapped_column(default=list)
     categories: Mapped[list[Any]] = mapped_column(default=list)
     business_signals: Mapped[list[Any]] = mapped_column(default=list)
-    b2c_signals: Mapped[list[Any]] = mapped_column(default=list)
+    negative_signals: Mapped[list[Any]] = mapped_column(default=list)
     inferred_company_type: Mapped[str | None] = mapped_column(String(64))
     detected_country: Mapped[str | None] = mapped_column(String(2))
     country_evidence: Mapped[str | None] = mapped_column(String(255))
@@ -163,6 +165,7 @@ class LeadScore(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"))
+    profile: Mapped[str] = mapped_column(String(64))
     score: Mapped[int] = mapped_column(Integer)
     rule_score: Mapped[int] = mapped_column(Integer)
     llm_adjustment: Mapped[int] = mapped_column(Integer, default=0)
@@ -219,6 +222,7 @@ class ImportBatch(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     source: Mapped[str] = mapped_column(String(64))
+    profile: Mapped[str | None] = mapped_column(String(64))
     label: Mapped[str | None] = mapped_column(String(255))
     total_rows: Mapped[int] = mapped_column(Integer, default=0)
     created_count: Mapped[int] = mapped_column(Integer, default=0)

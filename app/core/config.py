@@ -44,8 +44,22 @@ class Settings(BaseSettings):
     openai_input_cost_per_1m: float = 0.15
     openai_output_cost_per_1m: float = 0.60
 
+    # --- Ideal Customer Profiles ------------------------------------------------
+    # YAML files describing who you are looking for (see profiles/README.md).
+    profiles_dir: Path = PROJECT_ROOT / "profiles"
+    default_profile: str = "restaurants"
+
     # --- Discovery ------------------------------------------------------------
     wikidata_sparql_url: str = "https://query.wikidata.org/sparql"
+    # OpenStreetMap (ODbL): Overpass for POI search, Nominatim for geocoding cities.
+    # Comma-separated public Overpass instances, tried in order when one is busy/down.
+    overpass_urls: str = (
+        "https://overpass-api.de/api/interpreter,"
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter,"
+        "https://overpass.kumi.systems/api/interpreter"
+    )
+    nominatim_url: str = "https://nominatim.openstreetmap.org/search"
+    osm_timeout_seconds: float = 120.0
     google_places_api_key: SecretStr | None = None
     google_places_url: str = "https://places.googleapis.com/v1/places:searchText"
     # USD per request. Check the Google Maps Platform price list for your SKU.
@@ -64,19 +78,15 @@ class Settings(BaseSettings):
     max_page_bytes: int = 2_000_000
     demo_data_dir: Path = PROJECT_ROOT / "data" / "demo"
 
-    # --- Scoring -------------------------------------------------------------
+    # --- Scoring defaults (a profile's own geography takes precedence) ---------
     target_countries_primary: str = EU27
     target_countries_secondary: str = "GB,CH,NO,RS,MK,AL,ME,TR,UA,EG,MA,TN,IL,JO,LB,AE,SA"
-    qualification_threshold: int = 70
-    review_threshold: int = 50
 
     # --- Outreach ------------------------------------------------------------
     sender_name: str = "Alex Example"
-    sender_company: str = "AgriMarket Demo"
-    sender_value_proposition: str = (
-        "a B2B marketplace that connects agricultural producers and food suppliers "
-        "with verified professional buyers across Europe"
-    )
+    sender_company: str = "Your Company"
+    # Fallback pitch; each profile can define its own outreach.value_proposition.
+    sender_value_proposition: str = "a service that helps businesses like yours win more customers"
 
     # --- CRM -----------------------------------------------------------------
     hubspot_access_token: SecretStr | None = None
@@ -92,6 +102,10 @@ class Settings(BaseSettings):
         if value is None or (isinstance(value, str) and not value.strip()):
             return None
         return value
+
+    @property
+    def overpass_endpoints(self) -> list[str]:
+        return [u.strip() for u in self.overpass_urls.split(",") if u.strip()]
 
     @property
     def primary_countries(self) -> frozenset[str]:

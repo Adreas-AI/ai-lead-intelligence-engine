@@ -21,6 +21,7 @@ def health(db: Session = Depends(get_db), settings: Settings = Depends(get_setti
         "status": "ok",
         "version": __version__,
         "llm_provider": settings.llm_provider,
+        "default_profile": settings.default_profile,
         "integrations": {
             "openai": settings.openai_api_key is not None,
             "google_places": settings.google_places_api_key is not None,
@@ -30,5 +31,7 @@ def health(db: Session = Depends(get_db), settings: Settings = Depends(get_setti
 
 
 @router.get("/analytics/summary", response_model=AnalyticsSummary)
-def analytics_summary(db: Session = Depends(get_db)) -> AnalyticsSummary:
-    return analytics.summary(db)
+def analytics_summary(
+    profile: str | None = None, db: Session = Depends(get_db)
+) -> AnalyticsSummary:
+    return analytics.summary(db, profile)

@@ -13,17 +13,10 @@ from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
+from app.domain.geo import COUNTRY_NAMES, REGION_NAMES, normalize_country
+from app.domain.keywords import find_keywords
 from app.domain.normalize import normalize_name, strip_accents
-from app.domain.taxonomy import (
-    B2B_SIGNALS,
-    B2C_SIGNALS,
-    COMPANY_TYPES,
-    COUNTRY_NAMES,
-    PRODUCT_CATEGORIES,
-    REGION_NAMES,
-    find_keywords,
-    normalize_country,
-)
+from app.domain.profiles import Profile
 
 ABOUT_HINTS = ("about", "company", "who-we-are", "who_we_are", "our-story", "profile", "products")
 _WS = re.compile(r"\s+")
@@ -52,7 +45,7 @@ class ExtractedProfile:
     products: list[str]
     categories: list[str]
     business_signals: list[str]
-    b2c_signals: list[str]
+    negative_signals: list[str]
     inferred_company_type: str | None
     markets_mentioned: list[str]
 
@@ -79,6 +72,18 @@ def _iter_jsonld(soup: BeautifulSoup):
                 yield item
 
 
+_BUSINESS_TYPES = {
+    "Organization", "Corporation", "LocalBusiness", "Store", "Restaurant", "CafeOrCoffeeShop",
+    "BarOrPub", "Bakery", "HairSalon", "BeautySalon", "NailSalon", "DaySpa", "Dentist",
+    "MedicalClinic", "Physician", "Pharmacy", "Hotel", "LodgingBusiness", "AutoRepair",
+    "Attorney", "LegalService", "AccountingService", "RealEstateAgent", "TravelAgency",
+}  # fmt: skip
+
+
+def _is_business_type(t: str) -> bool:
+    return t in _BUSINESS_TYPES or t.endswith(("Business", "Store", "Establishment", "Service"))
+
+
 def parse_page(html: str, base_url: str) -> PageFacts:
     soup = BeautifulSoup(html, "html.parser")
     facts = PageFacts()
@@ -97,11 +102,7 @@ def parse_page(html: str, base_url: str) -> PageFacts:
     for item in _iter_jsonld(soup):
         types = item.get("@type", [])
         types = types if isinstance(types, list) else [types]
-        if not any(
-            t in ("Organization", "LocalBusiness", "Corporation", "Store")
-            or str(t).endswith("Business")
-            for t in types
-        ):
+        if not any(_is_business_type(str(t)) for t in types):
             continue
         facts.jsonld_name = facts.jsonld_name or _clean(item.get("name"))
         facts.jsonld_description = facts.jsonld_description or _clean(item.get("description"))
@@ -141,24 +142,18 @@ def parse_page(html: str, base_url: str) -> PageFacts:
     return facts
 
 
-def extract_profile(text: str) -> ExtractedProfile:
+def extract_profile(text: str, profile: Profile) -> ExtractedProfile:
+    """Evidence found in ``text``, interpreted through the ICP ``profile``."""
     products: list[str] = []
     categories: list[str] = []
-    for cat in PRODUCT_CATEGORIES:
+    for cat in profile.offering_categories:
         hits = find_keywords(text, cat.keywords)
         if hits:
             categories.append(cat.label)
             products.extend(h for h in hits if h not in products)
-    signals = [name for name, kws in B2B_SIGNALS.items() if find_keywords(text, kws)]
-    b2c = find_keywords(text, B2C_SIGNALS)
-
-    inferred_type = None
-    best_points = -1
-    for slug, (points, is_b2b, synonyms) in COMPANY_TYPES.items():
-        if not is_b2b or not synonyms:
-            continue
-        if find_keywords(text, synonyms) and points > best_points:
-            inferred_type, best_points = slug, points
+    signals = [name for name, kws in profile.signals.positive.items() if find_keywords(text, kws)]
+    negative = find_keywords(text, [*profile.signals.negative, *profile.signals.disqualify])
+    inferred_type = profile.infer_business_type(text)
 
     lowered = strip_accents(text).lower()
     markets = [
@@ -166,7 +161,9 @@ def extract_profile(text: str) -> ExtractedProfile:
         for name in [*COUNTRY_NAMES.values(), *REGION_NAMES]
         if re.search(rf"(?<!\w){re.escape(name.lower())}(?!\w)", lowered)
     ]
-    return ExtractedProfile(products[:25], categories, signals, b2c, inferred_type, markets[:20])
+    return ExtractedProfile(
+        products[:25], categories, signals, negative, inferred_type, markets[:20]
+    )
 
 
 def detect_country(facts: PageFacts, url: str) -> tuple[str | None, str | None]:

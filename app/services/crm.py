@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.db.models import Company, CrmSyncRecord, LeadStatus, QualificationStatus, SyncStatus
-from app.domain.taxonomy import COUNTRY_NAMES
+from app.domain.geo import COUNTRY_NAMES
 from app.providers.crm import CrmError, CrmProvider
 from app.schemas import BatchResult
 
@@ -27,6 +27,7 @@ log = get_logger(__name__)
 
 CSV_COLUMNS = [
     "company_id",
+    "profile",
     "name",
     "website",
     "domain",
@@ -65,6 +66,7 @@ def _row(company: Company) -> dict:
     draft = company.drafts[-1] if company.drafts else None
     return {
         "company_id": company.id,
+        "profile": company.profile,
         "name": company.name,
         "website": company.website or "",
         "domain": company.domain or "",

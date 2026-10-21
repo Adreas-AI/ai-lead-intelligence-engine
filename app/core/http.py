@@ -20,10 +20,11 @@ class HttpClient:
         transport: httpx.BaseTransport | None = None,
         rate_per_second: float | None = None,
         retry_policy: RetryPolicy | None = None,
+        timeout: float | None = None,
     ):
         self.settings = settings or get_settings()
         self._client = httpx.Client(
-            timeout=self.settings.http_timeout_seconds,
+            timeout=timeout or self.settings.http_timeout_seconds,
             follow_redirects=True,
             headers={"User-Agent": self.settings.http_user_agent},
             transport=transport,

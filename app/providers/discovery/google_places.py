@@ -12,12 +12,14 @@ from itertools import product
 from app.core.config import Settings
 from app.core.http import HttpClient
 from app.core.logging import get_logger
-from app.domain.taxonomy import COUNTRY_NAMES
+from app.domain.geo import COUNTRY_NAMES
+from app.domain.profiles import Profile
 from app.providers.discovery.base import (
     DiscoveryOutcome,
     DiscoveryProvider,
     DiscoveryQuery,
     ProviderNotConfigured,
+    selected_industries,
 )
 from app.schemas import CompanyIn
 
@@ -36,8 +38,6 @@ FIELD_MASK = ",".join(
     ]
 )
 
-DEFAULT_TERMS = ["agricultural products wholesaler", "fresh produce exporter", "food distributor"]
-
 
 class GooglePlacesDiscoveryProvider(DiscoveryProvider):
     name = "google_places"
@@ -51,24 +51,35 @@ class GooglePlacesDiscoveryProvider(DiscoveryProvider):
     def is_configured(self) -> bool:
         return self.settings.google_places_api_key is not None
 
-    def _terms(self, query: DiscoveryQuery) -> list[str]:
-        base = query.keywords or [i.replace("_", " ") for i in query.industries] or DEFAULT_TERMS
-        if query.company_types:
-            return [f"{b} {t.replace('_', ' ')}" for b, t in product(base, query.company_types)]
-        return base
+    @staticmethod
+    def _terms(query: DiscoveryQuery, profile: Profile) -> list[tuple[str, str | None]]:
+        """(search term, industry slug) pairs."""
+        if query.keywords:
+            return [(k, None) for k in query.keywords]
+        if query.industries:
+            return [(profile.industries[s].label, s) for s in selected_industries(query, profile)]
+        if profile.discovery.search_terms:
+            return [(t, None) for t in profile.discovery.search_terms]
+        return [(i.label, s) for s, i in profile.industries.items()]
 
-    def search(self, query: DiscoveryQuery) -> DiscoveryOutcome:
+    def search(self, query: DiscoveryQuery, profile: Profile) -> DiscoveryOutcome:
         if not self.is_configured():
             raise ProviderNotConfigured("set GOOGLE_PLACES_API_KEY to use google_places discovery")
         key = self.settings.google_places_api_key.get_secret_value()  # type: ignore[union-attr]
-        countries = query.countries or ["GR"]
+        countries = query.countries or sorted(profile.primary_countries())[:1] or ["GR"]
+        places = query.cities or [None]
         results: dict[str, CompanyIn] = {}
         requests = 0
-        for country, term in product(countries, self._terms(query)):
+        for country, place, (term, slug) in product(countries, places, self._terms(query, profile)):
             if len(results) >= query.limit:
                 break
+            where = (
+                f"{place}, {COUNTRY_NAMES.get(country, country)}"
+                if place
+                else (COUNTRY_NAMES.get(country, country))
+            )
             body = {
-                "textQuery": f"{term} in {COUNTRY_NAMES.get(country, country)}",
+                "textQuery": f"{term} in {where}",
                 "regionCode": country,
                 "pageSize": min(20, query.limit),
             }
@@ -78,16 +89,17 @@ class GooglePlacesDiscoveryProvider(DiscoveryProvider):
                 headers={"X-Goog-Api-Key": key, "X-Goog-FieldMask": FIELD_MASK},
             )
             requests += 1
-            for place in response.json().get("places", []):
-                company = self._to_company(place, country, term)
-                if company and company.source_ref not in results:
-                    results[company.source_ref] = company  # type: ignore[index]
+            for item in response.json().get("places", []):
+                company = self._to_company(item, country, slug or term, profile.name)
+                if company is None or (query.require_website and not company.website):
+                    continue
+                results.setdefault(company.source_ref or company.name, company)
         companies = list(results.values())[: query.limit]
         cost = round(requests * self.settings.google_places_cost_per_request, 4)
         return DiscoveryOutcome(companies, requests_made=requests, cost_usd=cost)
 
     @staticmethod
-    def _to_company(place: dict, country: str, term: str) -> CompanyIn | None:
+    def _to_company(place: dict, country: str, industry: str, profile: str) -> CompanyIn | None:
         if place.get("businessStatus") not in (None, "OPERATIONAL"):
             return None
         name = (place.get("displayName") or {}).get("text")
@@ -107,11 +119,12 @@ class GooglePlacesDiscoveryProvider(DiscoveryProvider):
                 website=place.get("websiteUri"),
                 country=country_code,
                 city=city,
-                industry=term,
+                industry=industry,
                 keywords=[t for t in place.get("types", []) if t != "point_of_interest"],
                 source="google_places",
                 source_url=place.get("googleMapsUri"),
                 source_ref=place.get("id"),
+                profile=profile,
             )
         except ValueError:
             return None

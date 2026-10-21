@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
+from app.domain.profiles import Profile
 from app.schemas import CompanyIn, DiscoveryRequest
 
 DiscoveryQuery = DiscoveryRequest
@@ -33,7 +34,23 @@ class DiscoveryProvider(ABC):
         return True
 
     @abstractmethod
-    def search(self, query: DiscoveryQuery) -> DiscoveryOutcome: ...
+    def search(self, query: DiscoveryQuery, profile: Profile) -> DiscoveryOutcome: ...
+
+
+def selected_industries(query: DiscoveryQuery, profile: Profile) -> list[str]:
+    """Profile industry slugs requested (free text is mapped through the profile)."""
+    if not query.industries:
+        return list(profile.industries)
+    slugs = []
+    for raw in query.industries:
+        slug = raw if raw in profile.industries else profile.classify_industry(raw)
+        if slug not in profile.industries:
+            raise DiscoveryError(
+                f"industry {raw!r} is not part of profile '{profile.name}'; "
+                f"available: {sorted(profile.industries)}"
+            )
+        slugs.append(slug)
+    return slugs
 
 
 def matches_keywords(company: CompanyIn, keywords: list[str]) -> bool:

@@ -17,6 +17,7 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.db.models import Company, Enrichment, EnrichmentStatus, LeadStatus
 from app.domain.normalize import extract_domain
+from app.domain.profiles import Profile, ProfileError, get_profile
 from app.providers.llm import LLMError, LLMProvider
 from app.providers.web import FetchBlocked, FetchError, PageFetcher, RoutingFetcher
 from app.schemas import BatchResult
@@ -59,7 +60,7 @@ class EnrichmentService:
         home = self.fetcher.fetch(url)
         pages = [parse_page(home.html, home.final_url)]
         urls = [home.final_url]
-        # The taxonomy is English: prefer the site's own English version when it declares one.
+        # Profiles are usually written in English: prefer the site's own English version.
         en_url = pages[0].english_url
         if pages[0].lang not in (None, "en") and en_url and en_url != home.final_url:
             try:
@@ -128,9 +129,10 @@ class EnrichmentService:
             countries=[company.country] if company.country else [],
             keywords=[company.name],
             limit=3,
+            require_website=True,
         )
         try:
-            outcome = provider.search(query)
+            outcome = provider.search(query, self._profile_for(company))
         except Exception as exc:
             log.warning("website_resolution_failed", company_id=company.id, error=str(exc))
             return None
@@ -145,6 +147,15 @@ class EnrichmentService:
             if candidate.website and name_similarity(candidate.name, company.name) >= 0.8:
                 return candidate.website
         return None
+
+    def _profile_for(self, company: Company) -> Profile:
+        try:
+            return get_profile(company.profile)
+        except ProfileError:
+            log.warning(
+                "profile_missing_using_default", company_id=company.id, profile=company.profile
+            )
+            return get_profile(None)
 
     # --------------------------------------------------------------------- main
     def enrich(self, company: Company, *, use_llm: bool = False) -> Enrichment:
@@ -178,7 +189,7 @@ class EnrichmentService:
         evidence_text = " ".join(
             filter(None, [website_text, company.description, " ".join(company.keywords or [])])
         )
-        profile = extract_profile(evidence_text)
+        profile = extract_profile(evidence_text, self._profile_for(company))
 
         if home:
             record.page_title = home.title
@@ -205,7 +216,7 @@ class EnrichmentService:
         record.products = profile.products
         record.categories = profile.categories
         record.business_signals = profile.business_signals
-        record.b2c_signals = profile.b2c_signals
+        record.negative_signals = profile.negative_signals
         record.inferred_company_type = profile.inferred_company_type
         record.markets_mentioned = profile.markets_mentioned
         record.source_urls = list(dict.fromkeys(source_urls))
@@ -220,9 +231,9 @@ class EnrichmentService:
         if not (company.country or record.detected_country):
             missing.append("country")
         if not record.categories:
-            missing.append("product_categories")
+            missing.append("offering_categories")
         if not record.business_signals:
-            missing.append("business_model_signals")
+            missing.append("business_signals")
         record.missing_fields = missing
 
         if status not in (EnrichmentStatus.BLOCKED, EnrichmentStatus.FAILED):

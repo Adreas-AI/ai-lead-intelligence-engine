@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.logging import get_logger
 from app.db.models import Company, ImportBatch
 from app.domain.normalize import extract_domain, name_similarity, normalize_name
-from app.domain.taxonomy import classify_company_type, classify_industry
+from app.domain.profiles import Profile, get_profile
 from app.schemas import CompanyIn, DuplicateMatch, ImportReport, PossibleDuplicate, RowError
 
 log = get_logger(__name__)
@@ -89,7 +89,7 @@ def find_duplicate(db: Session, item: CompanyIn) -> tuple[Company, str, float] |
     return None
 
 
-def _fill_blanks(existing: Company, item: CompanyIn) -> None:
+def _fill_blanks(existing: Company, item: CompanyIn, profile: Profile) -> None:
     if not existing.website and item.website:
         domain = extract_domain(item.website)
         existing.website = item.website
@@ -97,16 +97,19 @@ def _fill_blanks(existing: Company, item: CompanyIn) -> None:
     for attr in ("country", "city", "description", "source_url"):
         if getattr(existing, attr) in (None, "") and getattr(item, attr):
             setattr(existing, attr, getattr(item, attr))
+    if existing.profile != profile.name:
+        return  # a lead keeps its own profile; only neutral facts are merged
     if existing.industry in ("unknown", "other") and item.industry:
-        existing.industry = classify_industry(item.industry)
+        existing.industry = profile.classify_industry(item.industry)
         existing.industry_raw = item.industry
     if existing.company_type == "unknown" and item.company_type:
-        existing.company_type = classify_company_type(item.company_type)
+        existing.company_type = profile.classify_business_type(item.company_type)
     if item.keywords:
         existing.keywords = sorted(set(existing.keywords or []) | set(item.keywords))
 
 
-def create_company(db: Session, item: CompanyIn) -> Company:
+def create_company(db: Session, item: CompanyIn, profile: Profile | None = None) -> Company:
+    profile = profile or get_profile(item.profile)
     company = Company(
         name=item.name,
         normalized_name=normalize_name(item.name),
@@ -114,9 +117,10 @@ def create_company(db: Session, item: CompanyIn) -> Company:
         domain=extract_domain(item.website),
         country=item.country,
         city=item.city,
-        industry=classify_industry(item.industry),
+        industry=profile.classify_industry(item.industry),
         industry_raw=item.industry,
-        company_type=classify_company_type(item.company_type),
+        company_type=profile.classify_business_type(item.company_type),
+        profile=profile.name,
         description=item.description,
         keywords=item.keywords,
         source=item.source,
@@ -134,10 +138,13 @@ def ingest(
     rows: Iterable[tuple[int | None, CompanyIn]],
     *,
     source: str,
+    profile: str | None = None,
     label: str | None = None,
     invalid: list[RowError] | None = None,
     total_rows: int | None = None,
 ) -> ImportReport:
+    """Store new leads, report duplicates. Raises ProfileError for an unknown profile."""
+    batch_profile = get_profile(profile)
     invalid = invalid or []
     duplicates: list[DuplicateMatch] = []
     created_ids: list[int] = []
@@ -147,7 +154,7 @@ def ingest(
         match = find_duplicate(db, item)
         if match:
             existing, reason, sim = match
-            _fill_blanks(existing, item)
+            _fill_blanks(existing, item, get_profile(item.profile or batch_profile.name))
             duplicates.append(
                 DuplicateMatch(
                     row=row_no,
@@ -159,10 +166,12 @@ def ingest(
                 )
             )
             continue
-        created_ids.append(create_company(db, item).id)
+        item_profile = get_profile(item.profile) if item.profile else batch_profile
+        created_ids.append(create_company(db, item, item_profile).id)
 
     batch = ImportBatch(
         source=source,
+        profile=batch_profile.name,
         label=label,
         total_rows=total_rows if total_rows is not None else count + len(invalid),
         created_count=len(created_ids),
@@ -185,6 +194,7 @@ def ingest(
     return ImportReport(
         batch_id=batch.id,
         source=source,
+        profile=batch_profile.name,
         total_rows=batch.total_rows,
         created=len(created_ids),
         duplicates=duplicates,
@@ -234,9 +244,14 @@ def parse_csv(
     return valid, errors, total
 
 
-def import_csv(db: Session, content: bytes, filename: str | None = None) -> ImportReport:
+def import_csv(
+    db: Session, content: bytes, filename: str | None = None, profile: str | None = None
+) -> ImportReport:
+    get_profile(profile)  # fail fast on an unknown profile, before parsing
     valid, errors, total = parse_csv(content)
-    return ingest(db, valid, source="csv", label=filename, invalid=errors, total_rows=total)
+    return ingest(
+        db, valid, source="csv", profile=profile, label=filename, invalid=errors, total_rows=total
+    )
 
 
 def find_possible_duplicates(

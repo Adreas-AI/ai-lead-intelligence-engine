@@ -1,0 +1,87 @@
+# Example profile: hair salons and barbershops, for a seller of salon booking software.
+# Edit "outreach.value_proposition" to describe what YOU sell.
+name: hair_salons
+label: Hair salons & barbershops
+description: >-
+  Independent hair salons, barbershops and beauty salons that work by appointment and have
+  their own website.
+
+weights: {industry: 25, business_type: 15, geography: 20, business_signals: 20, offering: 10, completeness: 10}
+thresholds: {qualified: 65, review: 45}
+gates:
+  # Many salons only have social-media pages; leave review to a human instead of blocking.
+  require_verified_website: true
+  require_target_market: true
+
+geography:
+  primary_countries: [GR, CY]
+  cities: [Athens, Αθήνα, Thessaloniki, Θεσσαλονίκη, Patras, Πάτρα]
+
+industries:
+  hair_salon:
+    label: Hair salon
+    fit: 1.0
+    synonyms: [hair salon, hairdresser, hairdressers, hair studio, coiffure, coiffeur, hair stylist, κομμωτήριο, κομμωτήρια, κομμώσεις]
+    osm_tags: ["shop=hairdresser"]
+    wikidata_qids: {Q57261067: hairdressing industry}
+  barbershop:
+    label: Barbershop
+    fit: 0.9
+    synonyms: [barber, barbershop, barber shop, barbers, κουρείο]
+    osm_tags: ["shop=barber"]
+  beauty_salon:
+    label: Beauty salon
+    fit: 0.7
+    synonyms: [beauty salon, beauty studio, aesthetics, κέντρο αισθητικής, ινστιτούτο ομορφιάς]
+    osm_tags: ["shop=beauty"]
+  nail_salon:
+    label: Nail salon
+    fit: 0.5
+    synonyms: [nail salon, nail studio, nails, manicure]
+  cosmetics_retail:
+    label: Cosmetics retail
+    fit: 0.2
+    synonyms: [cosmetics store, beauty supplies, hair products shop, καλλυντικά]
+    osm_tags: ["shop=cosmetics"]
+
+business_types:
+  independent: {label: Independent salon, fit: 1.0, synonyms: [independent, our salon, our studio, our team, family-run, since]}
+  salon_group: {label: Salon group, fit: 0.8, synonyms: [our salons, our locations, two locations, both salons]}
+  franchise: {label: Franchise / chain, fit: 0.5, synonyms: [franchise, franchising, chain, store locator]}
+  academy: {label: Training academy, fit: 0.2, target_model: false, synonyms: [academy, training courses, seminars, hairdressing school]}
+  supplier: {label: Product supplier, fit: 0.1, target_model: false, synonyms: [wholesale, distributor, add to cart]}
+
+signals:
+  positive:
+    online_booking: [book online, book now, online booking, book an appointment, appointment, appointments, ραντεβού, κλείσε ραντεβού]
+    colour_services: [colour, color, balayage, highlights, ombre, βαφή]
+    treatments: [keratin, botox hair, olaplex, hair treatment, θεραπεία μαλλιών]
+    bridal: [bridal, wedding hair, νυφικό χτένισμα]
+    gift_vouchers: [gift voucher, gift card, δωροκάρτα]
+    loyalty: [loyalty, membership, rewards]
+  negative: [temporarily closed, under construction, coming soon]
+  disqualify: [permanently closed, closed for good, κλειστό οριστικά, domain for sale, this domain is for sale]
+
+offering_categories:
+  - {slug: cut_style, label: Cutting & styling, keywords: [haircut, haircuts, styling, blow dry, blowout, κούρεμα, χτένισμα]}
+  - {slug: colour, label: Hair colouring, keywords: [colour, color, balayage, highlights, ombre, βαφή, ανταύγειες]}
+  - {slug: treatments, label: Hair treatments, keywords: [keratin, botox hair, olaplex, hair treatment, κερατίνη]}
+  - {slug: barbering, label: Barbering, keywords: [beard, shave, fade, beard trim, ξύρισμα]}
+  - {slug: bridal, label: Bridal & events, core: false, keywords: [bridal, wedding, updo, events]}
+  - {slug: beauty, label: Nails & beauty, core: false, keywords: [nails, manicure, pedicure, makeup, waxing, facial]}
+
+outreach:
+  value_proposition: >-
+    an online booking and client-management app built for hair salons and barbershops
+  subject: "Online bookings for {name}"
+  relevance_default: >-
+    Salons like {name} use it to fill empty slots, cut no-shows with reminders and let clients
+    book 24/7.
+  relevance_by_type:
+    salon_group: With more than one salon, one shared calendar and client list can make life easier for the team.
+  signal_lines:
+    online_booking: " I saw you already take appointments, so this would fit into how you work today."
+    gift_vouchers: " It also handles gift vouchers, which you already offer."
+
+discovery:
+  search_terms: [hair salon, barbershop]

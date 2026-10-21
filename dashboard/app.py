@@ -18,26 +18,31 @@ STATUS_COLORS = {
     "disqualified": "#b5473a",
     "insufficient_data": "#8a8f98",
 }
+COUNTRIES = ["GR", "CY", "IT", "ES", "PT", "FR", "DE", "NL", "BE", "AT", "BG", "RO", "PL", "GB"]
 
-st.set_page_config(page_title="Lead Intelligence", page_icon="🌾", layout="wide")
+st.set_page_config(page_title="Lead Intelligence", page_icon="🎯", layout="wide")
 
 
-def api(method: str, path: str, **kwargs):
+def api(method: str, path: str, timeout: float = 180, **kwargs):
     headers = {"X-API-Key": API_KEY} if API_KEY else {}
     try:
-        r = httpx.request(method, f"{API_URL}{path}", headers=headers, timeout=180, **kwargs)
+        r = httpx.request(method, f"{API_URL}{path}", headers=headers, timeout=timeout, **kwargs)
     except httpx.HTTPError as exc:
         st.error(f"Cannot reach the API at {API_URL}: {exc}")
         st.stop()
     if r.status_code >= 400:
-        st.error(f"{method} {path} -> {r.status_code}: {r.text[:500]}")
+        try:
+            detail = r.json().get("detail", r.text)
+        except ValueError:
+            detail = r.text
+        st.error(f"{detail}")
         return None
     return r
 
 
 @st.cache_data(ttl=15)
-def load_summary():
-    r = api("GET", "/analytics/summary")
+def load_summary(profile: str | None):
+    r = api("GET", "/analytics/summary", params={"profile": profile} if profile else {})
     return r.json() if r else None
 
 
@@ -47,29 +52,180 @@ def load_leads(params: dict):
     return r.json() if r else {"total": 0, "items": []}
 
 
+@st.cache_data(ttl=30)
+def load_profiles():
+    r = api("GET", "/profiles")
+    return r.json() if r else []
+
+
 def refresh():
     st.cache_data.clear()
     st.rerun()
 
 
-st.title("🌾 AI Lead Intelligence Engine")
+def lead_table(items: list[dict]):
+    df = pd.DataFrame(items)
+    cols = [
+        "id",
+        "score",
+        "qualification_status",
+        "name",
+        "city",
+        "country",
+        "industry",
+        "company_type",
+        "website",
+        "source",
+        "profile",
+    ]
+    st.dataframe(
+        df[[c for c in cols if c in df]],
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "score": st.column_config.ProgressColumn(
+                "score", min_value=0, max_value=100, format="%d"
+            ),
+            "website": st.column_config.LinkColumn("website"),
+        },
+    )
+
+
+st.title("🎯 AI Lead Intelligence Engine")
 st.caption(
-    "Agri-food B2B lead discovery, enrichment and explainable qualification. "
-    "Outreach drafts require human review and are never sent automatically."
+    "Describe the businesses you want, in any language. The engine finds them, reads their "
+    "websites, scores them with explanations and drafts outreach for you to review. "
+    "Nothing is ever sent automatically."
 )
 
-summary = load_summary()
-if summary is None:
-    st.stop()
+profiles = load_profiles()
+profile_names = [p["name"] for p in profiles if "error" not in p]
+labels = {p["name"]: p.get("label", p["name"]) for p in profiles}
+with st.sidebar:
+    st.header("View")
+    view_profile = st.selectbox(
+        "Profile / search",
+        ["(all)", *profile_names],
+        format_func=lambda n: "All profiles" if n == "(all)" else f"{labels.get(n, n)} · {n}",
+        help="Filters the Overview, Leads and Outreach tabs.",
+    )
+    selected = None if view_profile == "(all)" else view_profile
+    if st.button("↻ Refresh data"):
+        refresh()
+    st.caption(f"API: {API_URL}")
 
-tab_overview, tab_leads, tab_outreach, tab_ops = st.tabs(
-    ["Overview", "Leads", "Outreach review", "Operations"]
+tab_search, tab_overview, tab_leads, tab_outreach, tab_ops = st.tabs(
+    ["🔎 Search", "Overview", "Leads", "Outreach review", "Operations"]
 )
+
+# ----------------------------------------------------------------------------- search
+with tab_search:
+    st.subheader("What kind of businesses are you looking for?")
+    st.caption(
+        "Type it the way you would say it, in Greek or English: *κρεοπωλεία*, *dental clinics*, "
+        "*καφετέριες στη Θεσσαλονίκη*, *vegan restaurants*. You will see exactly how it was "
+        "understood before anything is searched."
+    )
+    c1, c2, c3 = st.columns([3, 2, 1])
+    query = c1.text_input("Businesses", placeholder="e.g. κρεοπωλεία")
+    city = c2.text_input("City (optional)", placeholder="e.g. Αθήνα")
+    country = c3.selectbox("Country", COUNTRIES)
+    c4, c5, c6, c7 = st.columns([1, 1, 1, 3])
+    radius = c4.number_input("Radius (km)", 1.0, 50.0, 5.0, 1.0, disabled=not city)
+    limit = c5.number_input("Max results", 1, 200, 20)
+    with_site = c6.checkbox(
+        "Only with website",
+        value=True,
+        help="Businesses without a website cannot be enriched and usually score low.",
+    )
+    offer = c7.text_input(
+        "What do you sell? (optional, used in the email drafts)",
+        placeholder="e.g. an online booking app for small shops",
+    )
+    payload = {
+        "query": query,
+        "country": country,
+        "city": city or None,
+        "radius_km": radius,
+        "limit": int(limit),
+        "offer": offer or None,
+        "require_website": with_site,
+    }
+
+    b1, b2, _ = st.columns([1, 1, 4])
+    if b1.button("1 · Preview", disabled=len(query.strip()) < 2):
+        r = api("POST", "/search/interpret", json=payload)
+        st.session_state["plan"] = r.json() if r else None
+    plan = st.session_state.get("plan")
+    if plan and plan["query"] == query:
+        method_label = {
+            "catalog": "built-in catalog",
+            "llm": "AI (LLM)",
+            "name_match": "business-name match",
+        }[plan["method"]]
+        with st.container(border=True):
+            st.markdown(f"#### Understood as: **{plan['label']}**")
+            st.write(plan["explanation"])
+            m1, m2, m3 = st.columns(3)
+            m1.markdown(f"**Method**  \n{method_label}")
+            m2.markdown(
+                "**Where**  \n"
+                + (
+                    f"{plan['city']} · {plan['radius_km']:g} km · "
+                    if plan["city"]
+                    else "whole country · "
+                )
+                + plan["country"]
+            )
+            m3.markdown("**Sources**  \n" + ", ".join(plan["sources"]))
+            if plan["osm_tags"]:
+                st.markdown(
+                    "**OpenStreetMap categories:** " + ", ".join(f"`{t}`" for t in plan["osm_tags"])
+                )
+            if plan["name_keywords"]:
+                st.markdown(
+                    "**Name contains:** " + ", ".join(f"`{k}`" for k in plan["name_keywords"])
+                )
+            for w in plan["warnings"]:
+                st.warning(w)
+            st.caption(
+                f"Results will be saved under the profile `{plan['profile_name']}` "
+                "(profiles/ folder), which you can edit to tune the scoring."
+            )
+    if b2.button("2 · Search & score", type="primary", disabled=len(query.strip()) < 2):
+        with st.spinner("Searching, reading websites and scoring… this can take a few minutes."):
+            r = api("POST", "/search/run", json=payload, timeout=1800)
+        if r:
+            res = r.json()
+            st.session_state["plan"] = res["plan"]
+            st.cache_data.clear()
+            found = sum(d["found"] for d in res["discovery"])
+            new = sum((d["import_report"] or {}).get("created", 0) for d in res["discovery"])
+            st.success(
+                f"Found {found} {'business' if found == 1 else 'businesses'} ({new} new). "
+                f"Showing all leads of '{res['plan']['label']}'."
+            )
+            for w in res["plan"]["warnings"]:
+                st.warning(w)
+            if res["leads"]:
+                lead_table(res["leads"])
+                st.caption(
+                    "Open the Leads tab (pick this profile in the sidebar) to see why "
+                    "each business got its score, and Outreach review for the drafts."
+                )
+            else:
+                st.info(
+                    "No businesses with a website were found. Try a bigger radius, another "
+                    "city or different words."
+                )
 
 # --------------------------------------------------------------------------- overview
+summary = load_summary(selected)
 with tab_overview:
+    if summary is None:
+        st.stop()
     k = st.columns(6)
-    k[0].metric("Discovered leads", summary["total_leads"])
+    k[0].metric("Leads", summary["total_leads"])
     k[1].metric("Enriched", summary["enriched_leads"])
     k[2].metric("Qualified", summary["qualified_leads"])
     k[3].metric(
@@ -128,46 +284,45 @@ with tab_overview:
         )
         fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=330)
         st.plotly_chart(fig, use_container_width=True)
+        if not selected:
+            st.subheader("Leads by profile")
+            st.dataframe(
+                pd.DataFrame(summary["by_profile"]).rename(
+                    columns={"key": "profile", "count": "leads"}
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
 
     c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Leads by country")
-        df = pd.DataFrame(summary["by_country"])
-        if not df.empty:
-            fig = px.bar(
-                df.sort_values("count"),
-                x="count",
-                y="key",
-                orientation="h",
-                labels={"key": "", "count": "leads"},
-                color_discrete_sequence=[ACCENT],
-            )
-            fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=380)
-            st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        st.subheader("Leads by industry")
-        df = pd.DataFrame(summary["by_industry"])
-        if not df.empty:
-            fig = px.bar(
-                df.sort_values("count"),
-                x="count",
-                y="key",
-                orientation="h",
-                labels={"key": "", "count": "leads"},
-                color_discrete_sequence=[ACCENT],
-            )
-            fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=380)
-            st.plotly_chart(fig, use_container_width=True)
+    for col, key, title in (
+        (c1, "by_country", "Leads by country"),
+        (c2, "by_industry", "Leads by industry"),
+    ):
+        with col:
+            st.subheader(title)
+            df = pd.DataFrame(summary[key])
+            if not df.empty:
+                fig = px.bar(
+                    df.sort_values("count"),
+                    x="count",
+                    y="key",
+                    orientation="h",
+                    labels={"key": "", "count": "leads"},
+                    color_discrete_sequence=[ACCENT],
+                )
+                fig.update_layout(margin=dict(l=0, r=0, t=10, b=0), height=380)
+                st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("API / LLM usage")
     costs = pd.DataFrame(summary["costs"])
     if costs.empty:
-        st.info("No metered calls yet. Costs appear when discovery APIs or the LLM layer are used.")
+        st.info("No metered calls yet. Costs appear when paid APIs or the LLM layer are used.")
     else:
         st.dataframe(costs, hide_index=True, use_container_width=True)
         st.caption(
-            "Costs are computed from token counts / request counts and the unit prices "
-            "configured in .env. The mock LLM always costs $0."
+            "Costs are computed from token / request counts and the unit prices in .env. "
+            "OpenStreetMap, Wikidata and the mock LLM cost $0."
         )
 
 # ------------------------------------------------------------------------------ leads
@@ -175,53 +330,29 @@ with tab_leads:
     f = st.columns(5)
     countries = ["(all)"] + [c["key"] for c in summary["by_country"] if c["key"] != "unknown"]
     industries = ["(all)"] + [c["key"] for c in summary["by_industry"]]
-    country = f[0].selectbox("Country", countries)
-    industry = f[1].selectbox("Industry", industries)
+    country_f = f[0].selectbox("Country", countries)
+    industry_f = f[1].selectbox("Industry", industries)
     qualification = f[2].selectbox(
         "Qualification", ["(all)", "qualified", "needs_review", "disqualified", "insufficient_data"]
     )
     min_score = f[3].slider("Min score", 0, 100, 0)
-    query = f[4].text_input("Search name / domain")
+    q = f[4].text_input("Search name / domain")
     params = {
         k: v
         for k, v in {
-            "country": None if country == "(all)" else country,
-            "industry": None if industry == "(all)" else industry,
+            "profile": selected,
+            "country": None if country_f == "(all)" else country_f,
+            "industry": None if industry_f == "(all)" else industry_f,
             "qualification": None if qualification == "(all)" else qualification,
             "min_score": min_score or None,
-            "q": query or None,
+            "q": q or None,
         }.items()
         if v is not None
     }
     data = load_leads(params)
     st.caption(f"{data['total']} leads")
     if data["items"]:
-        df = pd.DataFrame(data["items"])
-        view = df[
-            [
-                "id",
-                "score",
-                "qualification_status",
-                "name",
-                "country",
-                "industry",
-                "company_type",
-                "status",
-                "domain",
-                "source",
-                "is_synthetic",
-            ]
-        ]
-        st.dataframe(
-            view,
-            hide_index=True,
-            use_container_width=True,
-            column_config={
-                "score": st.column_config.ProgressColumn(
-                    "score", min_value=0, max_value=100, format="%d"
-                )
-            },
-        )
+        lead_table(data["items"])
         options = {f"#{r['id']} {r['name']}": r["id"] for r in data["items"]}
         choice = st.selectbox("Inspect lead", list(options))
         detail = api("GET", f"/leads/{options[choice]}").json()
@@ -230,8 +361,10 @@ with tab_leads:
         with a:
             st.markdown(f"### {detail['name']}")
             st.write(
-                f"{detail.get('website') or 'no website'} · {detail.get('country') or '?'} · "
-                f"{detail['industry']} · {detail['company_type']}"
+                f"{detail.get('website') or 'no website'} · "
+                f"{detail.get('city') or ''} {detail.get('country') or '?'} · "
+                f"{detail['industry']} · {detail['company_type']} · "
+                f"profile `{detail['profile']}`"
             )
             if detail["is_synthetic"]:
                 st.caption("Synthetic demo company")
@@ -254,16 +387,18 @@ with tab_leads:
             else:
                 st.info("Not scored yet.")
         with b:
-            st.markdown("#### Enrichment")
+            st.markdown("#### What the website says")
             if enr:
                 st.write(
                     f"**Status:** {enr['status']} · website verified: "
                     f"{'yes' if enr['website_verified'] else 'no'}"
                 )
                 st.write(f"**Summary** ({enr['summary_method'] or '–'}): {enr['summary'] or '–'}")
-                st.write(f"**Categories:** {', '.join(enr['categories']) or '–'}")
-                st.write(f"**Products:** {', '.join(enr['products']) or '–'}")
-                st.write(f"**B2B signals:** {', '.join(enr['business_signals']) or '–'}")
+                st.write(f"**Offerings:** {', '.join(enr['categories']) or '–'}")
+                st.write(f"**Keywords found:** {', '.join(enr['products']) or '–'}")
+                st.write(f"**Signals:** {', '.join(enr['business_signals']) or '–'}")
+                if enr["negative_signals"]:
+                    st.write(f"**Negative signals:** {', '.join(enr['negative_signals'])}")
                 st.write(
                     f"**Location:** {enr['location'] or '–'} "
                     f"({enr['country_evidence'] or 'no country evidence'})"
@@ -283,14 +418,18 @@ with tab_leads:
 # --------------------------------------------------------------------------- outreach
 with tab_outreach:
     status_filter = st.radio("Show", ["pending_review", "approved", "rejected"], horizontal=True)
-    drafts = api("GET", "/outreach/drafts", params={"status": status_filter}).json()
+    drafts = api("GET", "/outreach/drafts", params={"status": status_filter}) or None
+    drafts = drafts.json() if drafts else []
+    leads_index = {lead["id"]: lead for lead in load_leads({})["items"]}
+    if selected:
+        drafts = [
+            d for d in drafts if leads_index.get(d["company_id"], {}).get("profile") == selected
+        ]
     if not drafts:
         st.info("No drafts with this status.")
-    names = {lead["id"]: lead["name"] for lead in load_leads({})["items"]}
     for d in drafts:
-        with st.expander(
-            f"#{d['id']} · {names.get(d['company_id'], d['company_id'])} · {d['subject']}"
-        ):
+        name = leads_index.get(d["company_id"], {}).get("name", d["company_id"])
+        with st.expander(f"#{d['id']} · {name} · {d['subject']}"):
             st.caption(f"method: {d['generation_method']} · created {d['created_at'][:19]}")
             for w in d["warnings"]:
                 st.warning(w)
@@ -315,11 +454,17 @@ with tab_ops:
     o1, o2 = st.columns(2)
     with o1:
         st.subheader("Import CSV")
+        import_profile = st.selectbox(
+            "Profile for the imported leads",
+            profile_names,
+            format_func=lambda n: f"{labels.get(n, n)} · {n}",
+        )
         upload = st.file_uploader("CSV with at least a 'name' column", type=["csv"])
         if upload and st.button("Import"):
             r = api(
                 "POST",
                 "/leads/import",
+                data={"profile": import_profile},
                 files={"file": (upload.name, upload.getvalue(), "text/csv")},
             )
             if r:
@@ -329,34 +474,31 @@ with tab_ops:
                     f"invalid {len(rep['invalid'])}"
                 )
                 st.json(rep, expanded=False)
-        st.subheader("Discover leads")
+        st.subheader("Discover with an existing profile")
         providers = api("GET", "/discovery/providers").json()
-        names_ok = [p["name"] for p in providers if p["configured"]]
         provider = st.selectbox(
-            "Provider", names_ok, help="Providers that need credentials appear once configured."
+            "Provider",
+            [p["name"] for p in providers if p["configured"]],
+            help="Providers that need credentials appear once configured.",
         )
-        dc = st.text_input("Countries (ISO codes, comma separated)", "GR,IT,ES")
-        di = st.multiselect(
-            "Industries",
-            [
-                "agriculture",
-                "food_wholesale",
-                "import_export",
-                "food_distribution",
-                "food_manufacturing",
-            ],
+        disc_profile = st.selectbox(
+            "Profile",
+            profile_names,
+            key="disc_profile",
+            format_func=lambda n: f"{labels.get(n, n)} · {n}",
         )
-        dk = st.text_input("Keywords (comma separated)", "")
-        dl = st.number_input("Limit", 1, 200, 20)
+        dc = st.text_input("Countries (ISO codes, comma separated)", "GR")
+        dcity = st.text_input("Cities (comma separated, optional)", "")
+        dl = st.number_input("Limit", 1, 200, 20, key="disc_limit")
         if st.button("Search & save"):
             body = {
                 "provider": provider,
+                "profile": disc_profile,
                 "limit": int(dl),
                 "countries": [c.strip() for c in dc.split(",") if c.strip()],
-                "industries": di,
-                "keywords": [k.strip() for k in dk.split(",") if k.strip()],
+                "cities": [c.strip() for c in dcity.split(",") if c.strip()],
             }
-            r = api("POST", "/discovery/search", json=body)
+            r = api("POST", "/discovery/search", json=body, timeout=600)
             if r:
                 res = r.json()
                 rep = res["import_report"] or {"created": 0, "duplicates": []}
@@ -373,7 +515,9 @@ with tab_ops:
         )
         if st.button("Enrich → score → draft new leads", type="primary"):
             with st.spinner("Running pipeline…"):
-                r = api("POST", "/pipeline/run", json={"use_llm": use_llm, "limit": 500})
+                r = api(
+                    "POST", "/pipeline/run", json={"use_llm": use_llm, "limit": 500}, timeout=1800
+                )
             if r:
                 st.json(r.json(), expanded=False)
                 st.cache_data.clear()
@@ -391,5 +535,3 @@ with tab_ops:
             st.dataframe(pd.DataFrame(failures), hide_index=True, use_container_width=True)
         else:
             st.caption("No failed syncs.")
-    if st.button("↻ Refresh data"):
-        refresh()

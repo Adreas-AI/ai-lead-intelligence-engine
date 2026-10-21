@@ -105,14 +105,14 @@ class MockLLMProvider(LLMProvider):
         name = facts.get("name", "there")
         cats = facts.get("categories") or []
         focus = " and ".join(c.lower() for c in cats[:2]) if cats else "your products"
-        subject = f"{focus.capitalize()} buyers for {name}"
+        subject = f"A quick idea for {name}"
         body = (
             f"Hello {name} team,\n\n"
             f"I saw on your website that you work with {focus}. "
             f"{sender.get('company', 'We')} is "
-            f"{sender.get('value_proposition', 'a B2B marketplace')}.\n\n"
-            "If it would be useful, I would be glad to share how suppliers in your category use "
-            "the platform. Would a short call next week work?\n\n"
+            f"{sender.get('value_proposition', 'a service for businesses like yours')}.\n\n"
+            "If it would be useful, I would be glad to share how businesses like yours use it. "
+            "Would a short call next week work?\n\n"
             f"Best regards,\n{sender.get('name', '')}\n{sender.get('company', '')}"
         )
         return {"subject": subject, "body": body}

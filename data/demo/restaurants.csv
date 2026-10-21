@@ -1,0 +1,10 @@
+name,website,country,city,industry,company_type,description,keywords,source_url,is_synthetic
+To Limani Ouzeri,https://limani-ouzeri.example,GR,Piraeus,Taverna,Family-run,,seafood,https://example.org/synthetic-dataset,true
+Trattoria Nonna Elena,https://nonna-elena.example,GR,Thessaloniki,Restaurant,,,italian,https://example.org/synthetic-dataset,true
+Kafeneio Plateia,https://kafeneio-plateia.example,GR,Athens,Cafe,Independent,,,https://example.org/synthetic-dataset,true
+BurgerHub,https://burgerhub.example,GR,Athens,Fast food,Franchise,,,https://example.org/synthetic-dataset,true
+Taverna Palia Poli,https://palia-poli.example,GR,Thessaloniki,Taverna,,,,https://example.org/synthetic-dataset,true
+MenuSoft,https://menusoft.example,GR,Athens,Software,Software vendor,,,https://example.org/synthetic-dataset,true
+Psistaria O Nikos,,GR,Athens,Grill,,Neighbourhood grill house.,,https://example.org/synthetic-dataset,true
+To Limani Ouzeri,https://www.limani-ouzeri.example/,GR,,,,,,https://example.org/synthetic-dataset,true
+TRATTORIA NONNA ELENA,,GR,,,,,,https://example.org/synthetic-dataset,true

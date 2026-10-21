@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.db.models import Company, LeadStatus
 from app.domain.normalize import normalize_name
+from app.domain.profiles import ProfileError
 from app.schemas import (
     CompanyDetail,
     CompanyIn,
@@ -40,25 +41,39 @@ def to_detail(company: Company) -> CompanyDetail:
 
 
 @router.post("/import", response_model=ImportReport, status_code=status.HTTP_201_CREATED)
-async def import_leads(file: UploadFile = File(...), db: Session = Depends(get_db)) -> ImportReport:
+async def import_leads(
+    file: UploadFile = File(...),
+    profile: str | None = Form(default=None, description="ICP profile (default: DEFAULT_PROFILE)"),
+    db: Session = Depends(get_db),
+) -> ImportReport:
     """Import leads from a UTF-8 CSV. Duplicates and invalid rows are reported, not inserted."""
     content = await file.read(lead_service.MAX_CSV_BYTES + 1)
     try:
-        return lead_service.import_csv(db, content, file.filename)
-    except lead_service.CsvImportError as exc:
+        return lead_service.import_csv(db, content, file.filename, profile=profile)
+    except (lead_service.CsvImportError, ProfileError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 @router.post("", response_model=ImportReport, status_code=status.HTTP_201_CREATED)
-def create_leads(items: list[CompanyIn], db: Session = Depends(get_db)) -> ImportReport:
+def create_leads(
+    items: list[CompanyIn],
+    profile: str | None = Query(default=None, description="ICP profile for leads without one"),
+    db: Session = Depends(get_db),
+) -> ImportReport:
     if not items or len(items) > 500:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "send between 1 and 500 leads")
-    return lead_service.ingest(db, enumerate(items, start=1), source="api", label="api")
+    try:
+        return lead_service.ingest(
+            db, enumerate(items, start=1), source="api", profile=profile, label="api"
+        )
+    except ProfileError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
 
 @router.get("", response_model=LeadPage)
 def list_leads(
     db: Session = Depends(get_db),
+    profile: str | None = Query(default=None, max_length=64),
     country: str | None = Query(default=None, max_length=2),
     industry: str | None = None,
     status_: str | None = Query(default=None, alias="status"),
@@ -72,6 +87,8 @@ def list_leads(
     stmt = select(Company)
     if not include_archived:
         stmt = stmt.where(Company.status != LeadStatus.ARCHIVED)
+    if profile:
+        stmt = stmt.where(Company.profile == profile)
     if country:
         stmt = stmt.where(Company.country == country.upper())
     if industry:

@@ -1,0 +1,9 @@
+name,website,country,city,industry,company_type,description,keywords,source_url,is_synthetic
+Lumière Hair Studio,https://lumiere-hair.example,GR,Athens,Hair salon,,,,https://example.org/synthetic-dataset,true
+Kerasi Barber Co.,https://kerasi-barber.example,GR,Thessaloniki,Barbershop,,,,https://example.org/synthetic-dataset,true
+Bella Nails & Beauty,https://bella-nails.example,GR,Athens,Nail salon,,,,https://example.org/synthetic-dataset,true
+Salonica Hair Academy,https://salonica-academy.example,GR,Thessaloniki,Hairdressing school,Academy,,,https://example.org/synthetic-dataset,true
+Cosmo Beauty Supplies,https://cosmo-supplies.example,GR,Athens,Cosmetics store,Supplier,,,https://example.org/synthetic-dataset,true
+Studio Nine Hair,https://studio-nine.example,GR,Patras,Hair studio,Independent,,,https://example.org/synthetic-dataset,true
+Lumiere Hair Studio,,GR,,,,,,https://example.org/synthetic-dataset,true
+Kerasi Barber Co,,GR,,,,,,https://example.org/synthetic-dataset,true

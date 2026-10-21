@@ -27,15 +27,21 @@ def fast_http(settings):
 
 
 # --- discovery ---------------------------------------------------------------------
-def test_mock_discovery_filters(settings):
+def test_mock_discovery_filters(settings, agri):
     provider = MockDiscoveryProvider(settings)
-    everything = provider.search(DiscoveryRequest(limit=50)).companies
+    everything = provider.search(DiscoveryRequest(limit=50), agri).companies
     assert len(everything) == 7 and all(c.is_synthetic for c in everything)
-    greek = provider.search(DiscoveryRequest(countries=["GR"])).companies
+    greek = provider.search(DiscoveryRequest(countries=["GR"]), agri).companies
     assert [c.name for c in greek] == ["Crete Avocado Growers"]
-    traders = provider.search(DiscoveryRequest(company_types=["trader"])).companies
+    traders = provider.search(DiscoveryRequest(company_types=["trader"]), agri).companies
     assert [c.name for c in traders] == ["Szeged Paprika Traders Kft."]
-    assert provider.search(DiscoveryRequest(keywords=["paprika"])).companies[0].country == "HU"
+    assert (
+        provider.search(DiscoveryRequest(keywords=["paprika"]), agri).companies[0].country == "HU"
+    )
+    # fixtures belong to one profile; other profiles get nothing
+    from app.domain.profiles import get_profile
+
+    assert provider.search(DiscoveryRequest(), get_profile("restaurants")).companies == []
 
 
 def test_wikidata_query_contains_mapped_ids():
@@ -44,7 +50,7 @@ def test_wikidata_query_contains_mapped_ids():
 
 
 @respx.mock
-def test_wikidata_parses_bindings(settings, fast_http):
+def test_wikidata_parses_bindings(settings, fast_http, agri):
     respx.get(settings.wikidata_sparql_url).mock(
         return_value=httpx.Response(
             200,
@@ -67,28 +73,43 @@ def test_wikidata_parses_bindings(settings, fast_http):
         )
     )
     out = WikidataDiscoveryProvider(settings, http=fast_http).search(
-        DiscoveryRequest(provider="wikidata", countries=["GR"], industries=["food_manufacturing"])
+        DiscoveryRequest(provider="wikidata", countries=["GR"], industries=["food_manufacturing"]),
+        agri,
     )
     assert len(out.companies) == 1
     c = out.companies[0]
     assert (c.name, c.country, c.industry, c.source_ref) == (
         "Chipita",
         "GR",
-        "food industry",
+        "food_manufacturing",
         "Q9189808",
     )
+    assert c.profile == "agrifood_b2b" and c.keywords == ["food industry"]
     assert c.website == "http://www.chipita.com"  # scheme is preserved
 
 
-def test_google_places_requires_key(settings):
+def test_google_places_requires_key(settings, agri):
     from app.providers.discovery.base import ProviderNotConfigured
 
     with pytest.raises(ProviderNotConfigured):
-        GooglePlacesDiscoveryProvider(settings).search(DiscoveryRequest(provider="google_places"))
+        GooglePlacesDiscoveryProvider(settings).search(
+            DiscoveryRequest(provider="google_places"), agri
+        )
+
+
+def test_wikidata_needs_profile_mapping(settings):
+    from app.domain.profiles import get_profile
+    from app.providers.discovery.base import DiscoveryError
+
+    with pytest.raises(DiscoveryError, match="no Wikidata industry mapping"):
+        WikidataDiscoveryProvider(settings).search(
+            DiscoveryRequest(provider="wikidata", industries=["nail_salon"]),
+            get_profile("hair_salons"),
+        )
 
 
 @respx.mock
-def test_google_places_maps_results_and_counts_cost(settings, fast_http):
+def test_google_places_maps_results_and_counts_cost(settings, fast_http, agri):
     from pydantic import SecretStr
 
     s = settings.model_copy(update={"google_places_api_key": SecretStr("test-key")})
@@ -121,7 +142,8 @@ def test_google_places_maps_results_and_counts_cost(settings, fast_http):
     out = GooglePlacesDiscoveryProvider(s, http=fast_http).search(
         DiscoveryRequest(
             provider="google_places", countries=["GR"], keywords=["olive oil"], limit=5
-        )
+        ),
+        agri,
     )
     assert route.calls[0].request.headers["X-Goog-Api-Key"] == "test-key"
     assert [c.name for c in out.companies] == ["Olive Exporters"]

@@ -12,7 +12,8 @@
       "keywords": [
         "avocados"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Puglia Durum Wheat Consortium",
@@ -25,7 +26,8 @@
       "keywords": [
         "wheat"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Murcia Lettuce Exporters S.L.",
@@ -38,7 +40,8 @@
       "keywords": [
         "lettuce"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Mazovia Apple Union",
@@ -51,7 +54,8 @@
       "keywords": [
         "apples"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Szeged Paprika Traders Kft.",
@@ -64,7 +68,8 @@
       "keywords": [
         "paprika"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Lyon Fresh Distribution SAS",
@@ -77,7 +82,8 @@
       "keywords": [
         "foodservice"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     },
     {
       "name": "Andalucia Fresh Produce SL",
@@ -90,7 +96,8 @@
       "keywords": [
         "vegetables"
       ],
-      "source_url": "https://example.org/synthetic-discovery"
+      "source_url": "https://example.org/synthetic-discovery",
+      "profile": "agrifood_b2b"
     }
   ]
 }

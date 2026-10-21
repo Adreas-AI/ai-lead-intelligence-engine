@@ -33,18 +33,18 @@ def test_parse_page_reads_meta_jsonld_and_links():
     assert "tracking" not in facts.text  # scripts are stripped
 
 
-def test_extract_profile_detects_categories_signals_and_markets():
+def test_extract_profile_detects_categories_signals_and_markets(agri):
     facts = parse_page(HTML, "https://aegean-citrus.example/")
-    profile = extract_profile(facts.text)
+    profile = extract_profile(facts.text, agri)
     assert profile.categories == ["Fresh fruit"]
     assert {"oranges", "mandarins"} <= set(profile.products)
     assert {"bulk_supply", "import", "b2b_explicit"} <= set(profile.business_signals)
     assert "Germany" in profile.markets_mentioned
-    assert profile.b2c_signals == []
+    assert profile.negative_signals == []
 
 
-def test_extract_profile_on_empty_text_returns_nothing():
-    profile = extract_profile("")
+def test_extract_profile_on_empty_text_returns_nothing(agri):
+    profile = extract_profile("", agri)
     assert profile.categories == [] and profile.business_signals == []
     assert profile.inferred_company_type is None
 
@@ -73,3 +73,24 @@ def test_extractive_summary_uses_company_words_only():
     assert (
         extractive_summary(parse_page("<html><body>Hi</body></html>", "https://x.example")) is None
     )
+
+
+def test_same_text_is_read_through_different_profiles():
+    from app.domain.profiles import get_profile
+
+    text = "Book online for balayage and keratin. Gift vouchers available. Permanently closed."
+    salon = extract_profile(text, get_profile("hair_salons"))
+    assert {"online_booking", "colour_services", "treatments", "gift_vouchers"} <= set(
+        salon.business_signals
+    )
+    assert "permanently closed" in salon.negative_signals
+    assert extract_profile(text, get_profile("agrifood_b2b")).business_signals == []
+
+
+def test_local_business_jsonld_types_are_read():
+    html = (
+        '<html><head><script type="application/ld+json">{"@type":"HairSalon","name":"Lumiere",'
+        '"address":{"addressLocality":"Athens","addressCountry":"GR"}}</script></head></html>'
+    )
+    facts = parse_page(html, "https://lumiere.example")
+    assert facts.address_locality == "Athens" and facts.address_country == "GR"

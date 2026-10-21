@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import case, func, literal_column, select
+from sqlalchemy import and_, case, func, literal_column, select, true
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -22,20 +22,24 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 3) if denominator else None
 
 
-def _group(db: Session, column, base) -> list[CountItem]:
+def _group(db: Session, column, active) -> list[CountItem]:
     key = func.coalesce(column, literal_column("'unknown'")).label("key")
     rows = db.execute(
         select(key, func.count().label("n"))
-        .select_from(base)
-        .where(Company.status != LeadStatus.ARCHIVED)
+        .select_from(Company)
+        .where(active)
         .group_by("key")
         .order_by(literal_column("n").desc())
     ).all()
     return [CountItem(key=str(k), count=c) for k, c in rows]
 
 
-def summary(db: Session) -> AnalyticsSummary:
-    active = Company.status != LeadStatus.ARCHIVED
+def summary(db: Session, profile: str | None = None) -> AnalyticsSummary:
+    """Pipeline metrics, optionally for one profile. API/LLM costs are always global."""
+    active = and_(
+        Company.status != LeadStatus.ARCHIVED,
+        Company.profile == profile if profile else true(),
+    )
     total = db.scalar(select(func.count()).select_from(Company).where(active)) or 0
     enriched = (
         db.scalar(
@@ -63,12 +67,18 @@ def summary(db: Session) -> AnalyticsSummary:
         )
 
     qualified = by_q(QualificationStatus.QUALIFIED)
-    drafts = db.scalar(select(func.count(func.distinct(OutreachDraft.company_id)))) or 0
+    drafts = (
+        db.scalar(
+            select(func.count(func.distinct(OutreachDraft.company_id))).join(Company).where(active)
+        )
+        or 0
+    )
     approved = (
         db.scalar(
             select(func.count())
             .select_from(OutreachDraft)
-            .where(OutreachDraft.status == DraftStatus.APPROVED)
+            .join(Company)
+            .where(active, OutreachDraft.status == DraftStatus.APPROVED)
         )
         or 0
     )
@@ -76,7 +86,10 @@ def summary(db: Session) -> AnalyticsSummary:
         db.scalar(
             select(func.count())
             .select_from(CrmSyncRecord)
-            .where(CrmSyncRecord.provider != "csv", CrmSyncRecord.status == SyncStatus.SUCCESS)
+            .join(Company)
+            .where(
+                active, CrmSyncRecord.provider != "csv", CrmSyncRecord.status == SyncStatus.SUCCESS
+            )
         )
         or 0
     )
@@ -84,11 +97,15 @@ def summary(db: Session) -> AnalyticsSummary:
         db.scalar(
             select(func.count())
             .select_from(CrmSyncRecord)
-            .where(CrmSyncRecord.status == SyncStatus.FAILED)
+            .join(Company)
+            .where(active, CrmSyncRecord.status == SyncStatus.FAILED)
         )
         or 0
     )
-    duplicates = db.scalar(select(func.coalesce(func.sum(ImportBatch.duplicate_count), 0))) or 0
+    dup_stmt = select(func.coalesce(func.sum(ImportBatch.duplicate_count), 0))
+    if profile:
+        dup_stmt = dup_stmt.where(ImportBatch.profile == profile)
+    duplicates = db.scalar(dup_stmt) or 0
     avg = db.scalar(select(func.avg(Company.score)).where(active, Company.score.is_not(None)))
 
     bucket = case(
@@ -148,10 +165,11 @@ def summary(db: Session) -> AnalyticsSummary:
             "drafted_to_approved": _ratio(approved, drafts),
             "qualified_to_crm": _ratio(synced, qualified),
         },
-        by_country=_group(db, Company.country, Company),
-        by_industry=_group(db, Company.industry, Company),
-        by_status=_group(db, Company.status, Company),
-        by_source=_group(db, Company.source, Company),
+        by_country=_group(db, Company.country, active),
+        by_industry=_group(db, Company.industry, active),
+        by_status=_group(db, Company.status, active),
+        by_source=_group(db, Company.source, active),
+        by_profile=_group(db, Company.profile, active),
         score_distribution=[CountItem(key=k, count=dist.get(k, 0)) for k in order],
         costs=costs,
         total_cost_usd=round(sum(c.cost_usd for c in costs), 6),

@@ -1,7 +1,8 @@
 """Outreach draft preparation (human-in-the-loop; nothing is ever sent).
 
-Drafts are built only from verified facts. LLM drafts pass through guardrails;
-any violation falls back to the deterministic template and is recorded.
+Drafts are built only from verified facts plus the pitch defined in the lead's
+profile. LLM drafts pass through guardrails; any violation falls back to the
+deterministic template and is recorded.
 """
 
 from __future__ import annotations
@@ -17,40 +18,31 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.logging import get_logger
 from app.db.models import Company, DraftStatus, LeadStatus, OutreachDraft, QualificationStatus
-from app.domain.taxonomy import COUNTRY_NAMES
+from app.domain.geo import COUNTRY_NAMES
+from app.domain.profiles import Profile, ProfileError, get_profile
 from app.providers.llm import LLMError, LLMProvider
 from app.schemas import BatchResult
 from app.services.usage import record_usage
 
 log = get_logger(__name__)
 
-SUPPLY_SIDE = {"grower", "cooperative", "packer", "exporter", "food_manufacturer"}
-DEMAND_SIDE = {"wholesaler", "distributor", "importer", "trader"}
 PLACEHOLDER = re.compile(r"\{[^}]*\}|\[[^\]]*\]|<[^>]+>|\bXX+\b|lorem ipsum", re.I)
 DIGITS = re.compile(r"\d+(?:[.,]\d+)?")
 BANNED_PHRASES = (
-    "guarantee",
-    "guaranteed",
-    "increase your sales by",
-    "% more",
-    "as you know",
-    "congratulations on",
-    "i loved your",
-    "i was impressed by your recent",
-    "award-winning",
-    "risk-free",
-    "act now",
-    "limited time",
-)
+    "guarantee", "guaranteed", "increase your sales by", "% more", "as you know",
+    "congratulations on", "i loved your", "i was impressed by your recent", "award-winning",
+    "risk-free", "act now", "limited time",
+)  # fmt: skip
+UNVERIFIABLE_CLAIMS = ("organic", "certified", "globalgap", "iso", "brc", "ifs", "michelin")
 
-OUTREACH_SYSTEM_PROMPT = """You write short, professional B2B introduction emails for an
-agricultural marketplace. Hard rules:
+OUTREACH_SYSTEM_PROMPT = """You write short, professional cold emails from a seller to a
+business. Hard rules:
 - Use ONLY the facts provided. Never invent achievements, news, numbers, certifications,
   customers, people's names or personal compliments.
 - No statistics or numbers unless they appear in the facts.
-- Explain plainly why the marketplace may be commercially relevant to this company.
+- Explain plainly why the seller's offer may be relevant to this business.
 - 90-160 words, one clear call to action (a short call), no hype, no placeholders.
-- Address the company team, not a named person.
+- Address the business's team, not a named person. Write in English.
 Respond with JSON only: {"subject": string (max 80 chars), "body": string}"""
 
 
@@ -58,7 +50,8 @@ Respond with JSON only: {"subject": string (max 80 chars), "body": string}"""
 class DraftFacts:
     name: str
     country: str | None
-    company_type: str
+    city: str | None
+    business_type: str | None
     categories: list[str]
     products: list[str]
     business_signals: list[str]
@@ -71,17 +64,19 @@ class DraftFacts:
         return self.__dict__.copy()
 
 
-def collect_facts(company: Company) -> tuple[DraftFacts, list[str]]:
+def collect_facts(company: Company, profile: Profile) -> tuple[DraftFacts, list[str]]:
     e = company.latest_enrichment
     warnings: list[str] = []
     verified = bool(e and e.website_verified)
     use_site = e is not None and verified
     if e is not None and not verified:
         warnings.append("website not verified as official; website-derived facts excluded")
+    btype = profile.type_info(company.company_type)
     facts = DraftFacts(
         name=company.name,
-        country=COUNTRY_NAMES.get(company.country or "", None),
-        company_type=company.company_type,
+        country=COUNTRY_NAMES.get(company.country or ""),
+        city=company.city,
+        business_type=btype.label if btype else None,
         categories=list(e.categories) if use_site else [],
         products=list(e.products)[:4] if use_site else [],
         business_signals=list(e.business_signals) if use_site else [],
@@ -91,52 +86,45 @@ def collect_facts(company: Company) -> tuple[DraftFacts, list[str]]:
         website_verified=verified,
     )
     if not facts.categories:
-        warnings.append("no verified product categories: low personalisation")
+        warnings.append("no verified offering details: low personalisation")
     return facts, warnings
 
 
 def _focus(facts: DraftFacts) -> str:
     if facts.categories:
-        cats = [c.lower() for c in facts.categories[:2]]
-        return " and ".join(cats)
-    return "your product range"
+        return " and ".join(c.lower() for c in facts.categories[:2])
+    return "what you offer"
 
 
-def template_draft(facts: DraftFacts, settings: Settings) -> tuple[str, str]:
+def _fill(template: str, facts: DraftFacts) -> str:
+    return template.replace("{name}", facts.name).replace("{focus}", _focus(facts)).strip()
+
+
+def template_draft(
+    facts: DraftFacts, profile: Profile, settings: Settings, company_type: str | None = None
+) -> tuple[str, str]:
     focus = _focus(facts)
-    where = f" in {facts.country}" if facts.country else ""
+    where = f" in {facts.city or facts.country}" if (facts.city or facts.country) else ""
     if facts.categories:
         products = ", ".join(facts.products[:3])
         detail = f" (including {products})" if products else ""
-        opener = f"Your website describes {facts.name} as working with {focus}{detail}."
+        opener = f"Your website mentions {focus}{detail}."
     else:
-        opener = f"I came across {facts.name} while researching agri-food companies{where}."
+        opener = f"I came across {facts.name} while looking at {profile.label.lower()}{where}."
 
-    if facts.company_type in SUPPLY_SIDE:
-        relevance = (
-            f"For producers and exporters of {focus}, the platform can be a way to reach "
-            "professional buyers beyond existing channels."
-        )
-    elif facts.company_type in DEMAND_SIDE:
-        relevance = (
-            f"For companies that buy and distribute {focus}, the platform can be a way to "
-            "source directly from producers and compare offers in one place."
-        )
-    else:
-        relevance = (
-            f"If {focus} is part of your business, there may be a fit on either the buying "
-            "or the selling side."
-        )
-    export_line = ""
-    if "export" in facts.business_signals:
-        export_line = " Since you mention export activity, cross-border buyers may be relevant."
-
-    subject = f"B2B buyers for {focus} | {facts.name}"[:120]
+    o = profile.outreach
+    relevance = _fill(o.relevance_by_type.get(company_type or "", o.relevance_default), facts)
+    extra = "".join(
+        line.rstrip() if line.startswith(" ") else " " + line.strip()
+        for sig, line in o.signal_lines.items()
+        if sig in facts.business_signals
+    )
+    subject = _fill(o.subject, facts)[:120]
+    pitch = profile.value_proposition().strip()
     body = (
         f"Hello {facts.name} team,\n\n"
-        f"{opener} I work with {settings.sender_company}, "
-        f"{settings.sender_value_proposition}.\n\n"
-        f"{relevance}{export_line}\n\n"
+        f"{opener} I work with {settings.sender_company}, {pitch}.\n\n"
+        f"{relevance}{extra}\n\n"
         "Would you be open to a short call to see whether it is relevant for you? "
         "If not, no problem at all, and I will not follow up repeatedly.\n\n"
         f"Best regards,\n{settings.sender_name}\n{settings.sender_company}"
@@ -144,7 +132,9 @@ def template_draft(facts: DraftFacts, settings: Settings) -> tuple[str, str]:
     return subject, body
 
 
-def validate_draft(subject: str, body: str, facts: DraftFacts, settings: Settings) -> list[str]:
+def validate_draft(
+    subject: str, body: str, facts: DraftFacts, profile: Profile, settings: Settings
+) -> list[str]:
     """Return guardrail violations (empty list = acceptable)."""
     problems: list[str] = []
     text = f"{subject}\n{body}"
@@ -152,8 +142,18 @@ def validate_draft(subject: str, body: str, facts: DraftFacts, settings: Setting
         problems.append("does not mention the company name")
     if PLACEHOLDER.search(text):
         problems.append("contains placeholder text")
-    allowed = (
-        json.dumps(facts.as_dict()) + settings.sender_value_proposition + settings.sender_company
+    o = profile.outreach
+    allowed = " ".join(  # facts plus the seller's own, user-written pitch
+        [
+            json.dumps(facts.as_dict(), ensure_ascii=False),
+            profile.value_proposition(),
+            settings.sender_company,
+            settings.sender_name,
+            o.subject,
+            o.relevance_default,
+            *o.relevance_by_type.values(),
+            *o.signal_lines.values(),
+        ]
     )
     invented = [n for n in DIGITS.findall(text) if n not in allowed]
     if invented:
@@ -162,7 +162,7 @@ def validate_draft(subject: str, body: str, facts: DraftFacts, settings: Setting
     hits = [p for p in BANNED_PHRASES if p in lowered]
     if hits:
         problems.append(f"contains disallowed claims: {hits}")
-    for claim in ("organic", "certified", "globalgap", "iso", "brc", "ifs"):
+    for claim in UNVERIFIABLE_CLAIMS:
         if re.search(rf"\b{claim}\b", lowered) and claim not in allowed.lower():
             problems.append(f"mentions '{claim}' which is not in the verified facts")
     if not (3 <= len(subject) <= 120):
@@ -178,7 +178,7 @@ class OutreachService:
         self.settings = settings
         self.llm = llm
 
-    def _llm_draft(self, facts: DraftFacts) -> tuple[str, str] | None:
+    def _llm_draft(self, facts: DraftFacts, profile: Profile) -> tuple[str, str] | None:
         assert self.llm is not None
         payload = json.dumps(
             {
@@ -186,9 +186,11 @@ class OutreachService:
                 "sender": {
                     "name": self.settings.sender_name,
                     "company": self.settings.sender_company,
-                    "value_proposition": self.settings.sender_value_proposition,
+                    "value_proposition": profile.value_proposition(),
                 },
-            }
+                "target_profile": profile.label,
+            },
+            ensure_ascii=False,
         )
         try:
             result = self.llm.complete_json(
@@ -219,22 +221,26 @@ class OutreachService:
         return subject.strip(), body.strip()
 
     def generate(self, company: Company, *, use_llm: bool = False) -> OutreachDraft:
-        facts, warnings = collect_facts(company)
+        try:
+            profile = get_profile(company.profile)
+        except ProfileError:
+            profile = get_profile(None)
+        facts, warnings = collect_facts(company, profile)
         method = "template"
-        subject, body = template_draft(facts, self.settings)
+        subject, body = template_draft(facts, profile, self.settings, company.company_type)
         if use_llm and self.llm is not None:
-            llm_out = self._llm_draft(facts)
+            llm_out = self._llm_draft(facts, profile)
             if llm_out is None:
                 warnings.append("LLM draft unavailable; used template")
             else:
-                problems = validate_draft(*llm_out, facts, self.settings)
+                problems = validate_draft(*llm_out, facts, profile, self.settings)
                 if problems:
                     warnings.append("LLM draft rejected by guardrails: " + "; ".join(problems))
                 else:
                     subject, body = llm_out
                     method = f"llm:{self.llm.name}"
 
-        problems = validate_draft(subject, body, facts, self.settings)
+        problems = validate_draft(subject, body, facts, profile, self.settings)
         warnings.extend(f"guardrail: {p}" for p in problems)
         draft = OutreachDraft(
             company_id=company.id,

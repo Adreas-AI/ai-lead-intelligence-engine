@@ -1,0 +1,96 @@
+# Example profile: independent restaurants, for a seller of reservation / ordering software.
+# Edit "outreach.value_proposition" to describe what YOU sell.
+name: restaurants
+label: Restaurants, cafés & bars
+description: >-
+  Independent restaurants, tavernas, cafés and bars with their own website that take
+  reservations or online orders.
+
+weights: {industry: 25, business_type: 15, geography: 20, business_signals: 20, offering: 10, completeness: 10}
+thresholds: {qualified: 65, review: 45}
+gates:
+  require_verified_website: true
+  require_target_market: true
+
+geography:
+  primary_countries: [GR, CY]
+  secondary_countries: [IT, ES, PT, FR, DE, AT, BG, RO]
+  cities: [Athens, Αθήνα, Piraeus, Πειραιάς, Thessaloniki, Θεσσαλονίκη]
+
+industries:
+  restaurant:
+    label: Restaurant / taverna
+    fit: 1.0
+    synonyms: [restaurant, taverna, tavern, bistro, trattoria, osteria, ouzeri, mezedopoleio, eatery, grill, εστιατόριο, ταβέρνα, ψησταριά, μεζεδοπωλείο]
+    osm_tags: ["amenity=restaurant"]
+    wikidata_qids: {Q104714944: restaurant industry, Q41958: food service}
+  cafe:
+    label: Café
+    fit: 0.8
+    synonyms: [cafe, café, coffee shop, coffee house, espresso bar, brunch, καφετέρια, καφενείο]
+    osm_tags: ["amenity=cafe"]
+  bar:
+    label: Bar / pub
+    fit: 0.7
+    synonyms: [bar, pub, cocktail bar, wine bar, rooftop bar, μπαρ]
+    osm_tags: ["amenity=bar", "amenity=pub"]
+  catering:
+    label: Catering
+    fit: 0.6
+    synonyms: [catering, caterer, event catering]
+    osm_tags: ["craft=caterer"]
+  fast_food:
+    label: Fast food
+    fit: 0.5
+    synonyms: [fast food, burger, souvlaki, gyros, pizza delivery, takeaway]
+    osm_tags: ["amenity=fast_food"]
+  bakery:
+    label: Bakery / patisserie
+    fit: 0.4
+    synonyms: [bakery, patisserie, pastry shop, φούρνος, ζαχαροπλαστείο]
+    osm_tags: ["shop=bakery", "shop=pastry"]
+  hotel:
+    label: Hotel
+    fit: 0.3
+    synonyms: [hotel, resort, guesthouse]
+
+business_types:
+  independent: {label: Independent / family-run, fit: 1.0, synonyms: [family-run, family run, family owned, family-owned, independent, chef-owned, since, our family, οικογενειακή]}
+  small_group: {label: Small restaurant group, fit: 0.8, synonyms: [our restaurants, our locations, both locations, two locations, three locations]}
+  franchise: {label: Franchise / chain, fit: 0.4, synonyms: [franchise, franchising, chain, all stores, store locator]}
+  software_vendor: {label: Software / agency, fit: 0.0, target_model: false, synonyms: [saas, software, platform for restaurants, agency]}
+
+signals:
+  positive:
+    reservations: [reservations, reservation, book a table, reserve a table, booking, κρατήσεις, κράτηση]
+    online_ordering: [order online, online ordering, delivery, takeaway, take away, παραγγελία]
+    events: [private events, private dining, events, group bookings, parties, weddings, christenings]
+    menu_online: [menu, our menu, wine list, μενού]
+    opening_hours: [opening hours, open daily, ωράριο]
+    reviews: [tripadvisor, google reviews, michelin]
+  negative: [temporarily closed, under construction, coming soon]
+  disqualify: [permanently closed, closed for good, κλειστό οριστικά, domain for sale, this domain is for sale]
+
+offering_categories:
+  - {slug: greek, label: Greek cuisine, keywords: [greek cuisine, greek food, traditional greek, meze, mezedes, souvlaki, moussaka]}
+  - {slug: seafood, label: Seafood, keywords: [seafood, fresh fish, fish taverna, octopus, calamari]}
+  - {slug: italian, label: Italian, keywords: [italian, pasta, pizza, risotto, trattoria]}
+  - {slug: international, label: International, keywords: [international cuisine, fusion, asian, sushi, mexican, burgers]}
+  - {slug: coffee_brunch, label: Coffee & brunch, core: false, keywords: [coffee, espresso, brunch, breakfast, pastries]}
+  - {slug: drinks, label: Cocktails & wine, core: false, keywords: [cocktails, wine list, craft beer, signature drinks]}
+
+outreach:
+  value_proposition: >-
+    a reservations and online-ordering platform built for independent restaurants
+  subject: "More direct bookings for {name}"
+  relevance_default: >-
+    Many restaurants like {name} use it to take bookings and orders directly instead of
+    through commission-based apps.
+  relevance_by_type:
+    small_group: With more than one location, a single booking and ordering system can save the team a lot of back-and-forth.
+  signal_lines:
+    reservations: " I noticed you already take reservations, so this would plug into something you do today."
+    online_ordering: " Since you offer delivery or takeaway, direct online orders may be relevant."
+
+discovery:
+  search_terms: [restaurant, taverna, cafe]

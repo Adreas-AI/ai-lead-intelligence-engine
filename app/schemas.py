@@ -7,8 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.normalize import normalize_url
-from app.domain.taxonomy import normalize_country
+from app.domain.geo import normalize_country
+from app.domain.normalize import extract_domain, normalize_url
 
 
 class ORMModel(BaseModel):
@@ -31,6 +31,7 @@ class CompanyIn(BaseModel):
     source_url: str | None = Field(default=None, max_length=1024)
     source_ref: str | None = Field(default=None, max_length=255)
     is_synthetic: bool = False
+    profile: str | None = Field(default=None, max_length=64)
 
     @field_validator("name")
     @classmethod
@@ -48,6 +49,8 @@ class CompanyIn(BaseModel):
         normalized = normalize_url(v)
         if normalized is None:
             raise ValueError(f"invalid website URL: {v!r}")
+        if extract_domain(normalized) is None:
+            return None  # social profile / webmail / marketplace page: not an official site
         return normalized
 
     @field_validator("country")
@@ -83,6 +86,7 @@ class CompanyOut(ORMModel):
     source: str
     source_url: str | None
     is_synthetic: bool
+    profile: str
     status: str
     score: int | None
     qualification_status: str | None
@@ -103,7 +107,7 @@ class EnrichmentOut(ORMModel):
     products: list[str]
     categories: list[str]
     business_signals: list[str]
-    b2c_signals: list[str]
+    negative_signals: list[str]
     inferred_company_type: str | None
     detected_country: str | None
     country_evidence: str | None
@@ -127,6 +131,7 @@ class ScoreOut(ORMModel):
 
     id: int
     company_id: int
+    profile: str
     score: int
     rule_score: int
     llm_adjustment: int
@@ -206,6 +211,7 @@ class RowError(BaseModel):
 class ImportReport(BaseModel):
     batch_id: int
     source: str
+    profile: str
     total_rows: int
     created: int
     duplicates: list[DuplicateMatch]
@@ -224,8 +230,14 @@ class PossibleDuplicate(BaseModel):
 
 # --- Discovery --------------------------------------------------------------------
 class DiscoveryRequest(BaseModel):
-    provider: str = Field(default="mock", examples=["mock", "wikidata", "google_places"])
+    provider: str = Field(
+        default="mock", examples=["openstreetmap", "google_places", "wikidata", "mock"]
+    )
+    profile: str | None = Field(default=None, description="ICP profile (default: DEFAULT_PROFILE)")
     countries: list[str] = Field(default_factory=list, max_length=30)
+    cities: list[str] = Field(default_factory=list, max_length=10)
+    radius_km: float = Field(default=5.0, gt=0, le=50, description="Search radius around cities")
+    require_website: bool = Field(default=True, description="Only businesses with a website")
     industries: list[str] = Field(default_factory=list, max_length=20)
     company_types: list[str] = Field(default_factory=list, max_length=20)
     keywords: list[str] = Field(default_factory=list, max_length=20)
@@ -253,6 +265,7 @@ class ProviderInfo(BaseModel):
 
 class DiscoveryResponse(BaseModel):
     provider: str
+    profile: str
     found: int
     results: list[CompanyIn]
     import_report: ImportReport | None = None
@@ -341,6 +354,66 @@ class AnalyticsSummary(BaseModel):
     by_industry: list[CountItem]
     by_status: list[CountItem]
     by_source: list[CountItem]
+    by_profile: list[CountItem]
     score_distribution: list[CountItem]
     costs: list[CostItem]
     total_cost_usd: float
+
+
+# --- Free-text search -----------------------------------------------------------------
+class SearchRequest(BaseModel):
+    query: str = Field(
+        min_length=2, max_length=200, examples=["κρεοπωλεία", "dental clinics", "vegan restaurants"]
+    )
+    country: str = Field(default="GR", description="ISO code or country name")
+    city: str | None = Field(default=None, max_length=100, examples=["Αθήνα", "Thessaloniki"])
+    radius_km: float = Field(default=5.0, gt=0, le=50)
+    limit: int = Field(default=30, ge=1, le=200)
+    require_website: bool = Field(
+        default=True, description="Only businesses with a website (needed for enrichment)"
+    )
+    offer: str | None = Field(
+        default=None, max_length=500, description="What you sell (used in outreach drafts)"
+    )
+    use_llm: bool | None = Field(
+        default=None, description="Interpret with the LLM (default: when LLM_PROVIDER=openai)"
+    )
+
+    @field_validator("country")
+    @classmethod
+    def _country(cls, v: str) -> str:
+        code = normalize_country(v)
+        if code is None:
+            raise ValueError(f"unrecognised country: {v!r}")
+        return code
+
+
+class SearchPlan(BaseModel):
+    """What the engine understood from the query - shown to the user before searching."""
+
+    query: str
+    label: str
+    method: Literal["catalog", "llm", "name_match"]
+    explanation: str
+    categories: list[str] = []
+    osm_tags: list[str] = []
+    name_keywords: list[str] = []
+    search_terms: list[str] = []
+    website_keywords: list[str] = []
+    country: str
+    city: str | None = None
+    radius_km: float = 5.0
+    profile_name: str
+    sources: list[str] = []
+    warnings: list[str] = []
+
+
+class SearchRunRequest(SearchRequest):
+    enrich_and_score: bool = True
+
+
+class SearchRunResult(BaseModel):
+    plan: SearchPlan
+    discovery: list[DiscoveryResponse]
+    pipeline: PipelineResult | None = None
+    leads: list[CompanyOut] = []

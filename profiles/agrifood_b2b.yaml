@@ -1,0 +1,153 @@
+# Example profile: agri-food B2B suppliers and buyers for a wholesale marketplace.
+name: agrifood_b2b
+label: Agri-food B2B suppliers & buyers
+description: >-
+  Agricultural producers, cooperatives, packers, exporters, importers, wholesalers and food
+  distributors that trade in bulk with other businesses.
+
+geography:
+  primary_countries: [AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LV, LT, LU, MT, NL, PL, PT, RO, SK, SI, ES, SE]
+  secondary_countries: [GB, CH, "NO", RS, MK, AL, ME, TR, UA, EG, MA, TN, IL, JO, LB, AE, SA]
+
+gates:
+  require_verified_website: true
+  require_target_market: true
+
+industries:
+  agriculture:
+    label: Agriculture / growers
+    fit: 1.0
+    synonyms: [agriculture, agricultural, farming, farm, grower, growers, horticulture, cultivation, orchard, agri, agro]
+    wikidata_qids: {Q11451: agriculture, Q396622: agribusiness, Q48803: horticulture, Q1458465: fruticulture}
+  food_wholesale:
+    label: Food wholesale
+    fit: 1.0
+    synonyms: [food wholesale, wholesale food, wholesale, wholesaler, cash and carry]
+    osm_tags: ["shop=wholesale"]
+    wikidata_qids: {Q220695: wholesale, Q57262082: food trade}
+  import_export:
+    label: Import / export trading
+    fit: 1.0
+    synonyms: [import export, import/export, import-export, trading, commodity trading, agri trading, food trade, exporter, importer]
+    wikidata_qids: {Q178803: international trade, Q57262082: food trade}
+  food_distribution:
+    label: Food distribution
+    fit: 0.92
+    synonyms: [food distribution, distribution, distributor, foodservice, food service, horeca supply]
+    wikidata_qids: {Q5465458: food distribution}
+  food_manufacturing:
+    label: Food manufacturing
+    fit: 0.72
+    synonyms: [food manufacturing, food processing, food production, food industry, packing, mill, dairy, bakery, canning, olive mill]
+    wikidata_qids: {Q540912: food industry, Q627371: food processing, Q2836940: food manufacturing, Q13554450: dairy industry}
+  agri_inputs:
+    label: Agricultural inputs
+    fit: 0.56
+    synonyms: [fertilizer, fertiliser, seeds, agrochemical, crop protection, irrigation, agricultural machinery, agri inputs]
+  food_retail:
+    label: Food retail
+    fit: 0.32
+    synonyms: [supermarket, grocery, food retail, delicatessen, retail]
+  hospitality:
+    label: Hospitality
+    fit: 0.2
+    synonyms: [restaurant, hotel, catering, hospitality, cafe]
+
+business_types:
+  wholesaler: {label: Wholesaler, fit: 1.0, synonyms: [wholesaler, wholesale, cash and carry]}
+  exporter: {label: Exporter, fit: 1.0, synonyms: [exporter, export, exports]}
+  importer: {label: Importer, fit: 1.0, synonyms: [importer, import, imports]}
+  trader: {label: Trader, fit: 0.9, synonyms: [trader, trading, commodity, broker]}
+  distributor: {label: Distributor, fit: 0.9, synonyms: [distributor, distribution, foodservice]}
+  cooperative: {label: Cooperative, fit: 0.9, synonyms: [cooperative, co-op, coop, union of producers]}
+  grower: {label: Grower / producer, fit: 0.8, synonyms: [grower, producer, farm, farmer, estate, orchard]}
+  packer: {label: Packer, fit: 0.8, synonyms: [packer, packhouse, packing house, packing]}
+  food_manufacturer: {label: Food manufacturer, fit: 0.7, synonyms: [manufacturer, processor, processing, mill, factory]}
+  agri_input_supplier: {label: Agri-input supplier, fit: 0.5, synonyms: [fertilizer, seed, agrochemical, machinery]}
+  retailer: {label: Retailer, fit: 0.3, target_model: false, synonyms: [retailer, shop, store, supermarket, grocery]}
+  restaurant: {label: Restaurant, fit: 0.2, target_model: false, synonyms: [restaurant, taverna, cafe, catering]}
+  service_provider: {label: Service provider, fit: 0.1, target_model: false, synonyms: [agency, software, consulting, consultancy, saas]}
+
+signals:
+  positive:
+    wholesale: [wholesale, wholesaler, wholesale prices]
+    bulk_supply: [bulk, in bulk, bulk orders, pallet, pallets, container, containers, tonnes, tons, truckload]
+    export: [export, exports, exporting, exporter, exporters]
+    import: [import, imports, importing, importer, importers]
+    distribution: [distributor, distributors, distribution network, we distribute]
+    b2b_explicit: [b2b, business to business, trade customers, trade enquiries, trade inquiries, professional buyers, for businesses]
+    horeca: [horeca, foodservice, food service, catering suppliers]
+    private_label: [private label, white label, own label]
+    moq: [minimum order, moq, minimum order quantity]
+    certifications: [globalgap, global g.a.p, brc, ifs, iso 22000, haccp, organic certified, fssc 22000]
+  negative: [add to cart, add to basket, shop now, free shipping on orders, checkout, my cart, book a table, reserve a table, our menu]
+
+offering_categories:
+  - slug: fresh_fruit
+    label: Fresh fruit
+    keywords: [fresh fruit, citrus, oranges, lemons, mandarins, apples, pears, peaches, nectarines, apricots, cherries, grapes, table grapes, kiwi, kiwifruit, watermelon, melons, strawberries, berries, pomegranates, figs, avocados, bananas]
+  - slug: fresh_vegetables
+    label: Fresh vegetables
+    keywords: [vegetables, fresh vegetables, tomatoes, cucumbers, peppers, potatoes, onions, garlic, lettuce, leafy greens, zucchini, courgettes, aubergines, eggplants, carrots, cabbage, broccoli, asparagus]
+  - slug: olive_oil_olives
+    label: Olive oil & olives
+    keywords: [olive oil, extra virgin olive oil, evoo, olives, table olives, kalamata]
+  - slug: grains_cereals
+    label: Grains & cereals
+    keywords: [grains, cereals, wheat, durum wheat, barley, maize, corn, rice, oats, rye, flour, sunflower seeds]
+  - slug: legumes_pulses
+    label: Legumes & pulses
+    keywords: [legumes, pulses, lentils, chickpeas, beans, fava, split peas]
+  - slug: nuts_dried_fruit
+    label: Nuts & dried fruit
+    keywords: [nuts, almonds, walnuts, pistachios, hazelnuts, chestnuts, cashews, dried fruit, raisins, currants, dried figs, dates, prunes]
+  - slug: herbs_spices
+    label: Herbs & spices
+    keywords: [herbs, spices, oregano, thyme, saffron, mountain tea, sage, rosemary, paprika, aromatic plants]
+  - slug: honey_bee_products
+    label: Honey & bee products
+    keywords: [honey, thyme honey, pine honey, bee pollen, royal jelly, beeswax]
+  - slug: dairy_eggs
+    label: Dairy & eggs
+    core: false
+    keywords: [dairy, cheese, feta, yogurt, yoghurt, milk, eggs]
+  - slug: wine_beverages
+    label: Wine & beverages
+    core: false
+    keywords: [wine, wines, juice, juices, spirits, beer]
+  - slug: processed_foods
+    label: Processed & packaged foods
+    core: false
+    keywords: [canned, preserves, jams, sauces, frozen vegetables, frozen fruit, packaged food, snacks, pasta, tahini, halva]
+  - slug: meat_seafood
+    label: Meat & seafood
+    core: false
+    keywords: [meat, poultry, beef, lamb, pork, seafood, fish, aquaculture]
+  - slug: agri_inputs
+    label: Agricultural inputs
+    core: false
+    keywords: [fertilizers, fertilisers, seeds, seedlings, crop protection, irrigation, greenhouse equipment, greenhouse films, agricultural machinery, tractors]
+
+outreach:
+  value_proposition: >-
+    a B2B marketplace that connects agricultural producers and food suppliers with verified
+    professional buyers across Europe
+  subject: "B2B buyers for {focus} | {name}"
+  relevance_default: >-
+    If {focus} is part of your business, there may be a fit on either the buying or the
+    selling side.
+  relevance_by_type:
+    grower: &supply For producers and exporters of {focus}, the platform can be a way to reach professional buyers beyond existing channels.
+    cooperative: *supply
+    packer: *supply
+    exporter: *supply
+    food_manufacturer: *supply
+    wholesaler: &demand For companies that buy and distribute {focus}, the platform can be a way to source directly from producers and compare offers in one place.
+    distributor: *demand
+    importer: *demand
+    trader: *demand
+  signal_lines:
+    export: " Since you mention export activity, cross-border buyers may be relevant."
+
+discovery:
+  search_terms: [agricultural products wholesaler, fresh produce exporter, food distributor]

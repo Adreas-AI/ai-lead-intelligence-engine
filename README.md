@@ -4,9 +4,17 @@
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-An end-to-end B2B lead engine for agri-food marketplaces. It finds companies, enriches them from their own websites, scores them with explainable rules (plus an optional LLM review), drafts outreach for a person to review, and exports the qualified leads to CSV or HubSpot.
+**Type the kind of business you want, in plain words and in any language.** For example *"κρεοπωλεία στην Αθήνα"*, *"dental clinics in Thessaloniki"* or *"vegan restaurants"*.
 
-The target customers it is built around are agricultural producers, cooperatives, food wholesalers, distributors and import/export traders: the supply and demand sides of a B2B agricultural marketplace.
+The engine does the rest:
+
+1. It shows you exactly how it understood the request.
+2. It finds matching businesses.
+3. It reads their own websites.
+4. It scores each one against your Ideal Customer Profile, with an explanation for every point.
+5. It drafts a personalised email for you to review.
+
+It works for any vertical: butchers, salons, clinics, restaurants, accountants, wholesalers and so on.
 
 > Outreach is never sent automatically. Every draft waits for human review.
 > Missing company information is never invented. Gaps are recorded as `missing_fields`.
@@ -15,12 +23,15 @@ The target customers it is built around are agricultural producers, cooperatives
 
 ## Contents
 
-- [Business problem and solution](#business-problem-and-solution)
+- [What it does](#what-it-does)
+- [How a search is understood](#how-a-search-is-understood)
 - [Architecture](#architecture)
 - [Technology stack](#technology-stack)
 - [Installation](#installation)
 - [Environment configuration](#environment-configuration)
 - [Demo](#demo)
+- [Running a real search](#running-a-real-search)
+- [Ideal Customer Profiles](#ideal-customer-profiles)
 - [Example API requests](#example-api-requests)
 - [Screenshots](#screenshots)
 - [How qualification works](#how-qualification-works)
@@ -30,26 +41,46 @@ The target customers it is built around are agricultural producers, cooperatives
 
 ---
 
-## Business problem and solution
+## What it does
 
-**Problem.** Building a B2B agricultural marketplace means finding thousands of producers, packers, wholesalers and importers across many countries and languages. Done by hand, prospect research is slow and inconsistent:
+**The problem.** Prospecting for any B2B offer starts the same way: someone searches maps and directories, opens websites one by one, copies details into a spreadsheet and decides by gut feeling who is worth contacting. This is slow and inconsistent. Duplicates pile up in the CRM, and outreach is either generic or expensive to personalise.
 
-- Researchers open websites one by one and copy details into spreadsheets.
-- "Is this a good lead?" depends on who is asking, so qualification can't be compared across people or markets.
-- The same company arrives from several lists and ends up in the CRM twice.
-- Outreach is either generic or depends on time-consuming manual personalisation.
-
-**Solution.** The engine turns this into a repeatable pipeline:
+**The solution.** One repeatable pipeline that is the same for every vertical:
 
 | Stage | What happens | Output |
 |---|---|---|
-| Discovery | Pull companies from CSV, Wikidata (public, CC0) or Google Places; filter by country, industry, type and keywords | Leads with source URLs |
-| Deduplication | Match on domain, legal name + country, or fuzzy name; fill blanks instead of creating duplicates | Clean lead list, import report |
-| Enrichment | Fetch the official site (robots.txt respected), verify it belongs to the company, extract products, categories, B2B signals, location | Evidence with source URLs and timestamps |
-| Qualification | Deterministic 0–100 score across 6 criteria, hard gates, optional LLM adjustment (±10) | Structured JSON: score, reasoning, confidence, status |
-| Outreach | Draft a short email from verified facts only; guardrails reject invented numbers or claims | Drafts in a review queue |
-| CRM | Export to CSV or upsert into HubSpot without creating duplicates; failures are logged | Synced records, failure log |
-| Analytics | Funnel, conversion rates, breakdowns by country and industry, measured API/LLM cost | Streamlit dashboard and API |
+| **Search** | Free-text query → a visible search plan (categories, map tags, location, sources) | A saved, editable profile |
+| **Discovery** | OpenStreetMap (free), Google Places (optional), Wikidata, CSV import | Leads with source URLs |
+| **Deduplication** | Same domain, same legal name + country, or fuzzy name (Greek and Latin scripts) | Clean list, import report |
+| **Enrichment** | Fetch the official site (robots.txt respected), verify it, extract offerings, signals, location | Evidence with sources and timestamps |
+| **Qualification** | Deterministic 0–100 score from the profile's weights, hard gates, optional LLM review (±10) | JSON: score, reasoning, confidence, status |
+| **Outreach** | Short email from verified facts plus *your* pitch; guardrails block invented claims | Drafts waiting for review |
+| **CRM** | CSV export or HubSpot upsert without duplicates; failures logged | Synced records |
+| **Analytics** | Funnel, conversion, breakdowns per profile, country and industry, measured API/LLM cost | Dashboard and API |
+
+---
+
+## How a search is understood
+
+Before anything is searched, `POST /search/interpret` (or the **Preview** button in the dashboard) shows the plan:
+
+```
+You typed:   "κρεοπωλεία στην Αθήνα"
+Method:      catalog
+Understood:  Matched the built-in business catalog: Butcher shops (Κρεοπωλεία).
+             Searching: Αθήνα (within 5 km), Greece. Sources: openstreetmap.
+OSM tags:    shop=butcher
+```
+
+There are three ways to interpret a query, and the plan always says which one was used:
+
+| Method | When | How |
+|---|---|---|
+| `llm` | `LLM_PROVIDER=openai` with a key | The LLM turns *any* wording into categories, OpenStreetMap tags, local search terms and website keywords. Its output is validated: unknown or non-business tags are dropped. |
+| `catalog` | Default, no key needed | A built-in bilingual (Greek/English) dictionary of about 80 business types, tolerant of accents and Greek inflection (`κρεοπωλεία`, `Κρεοπωλείο`, `butcher shops` → `shop=butcher`). |
+| `name_match` | The words are not in the catalog and there is no LLM | Searches for businesses whose **name** contains the words. Clearly labelled as less complete, with a hint to add an API key. |
+
+If you type a place ("… στην Αθήνα", "… in Patras"), it is recognised. Otherwise you can set a city and a radius.
 
 ---
 
@@ -57,62 +88,66 @@ The target customers it is built around are agricultural producers, cooperatives
 
 ```mermaid
 flowchart LR
-    subgraph Sources
-        CSV[CSV upload]
-        WD[Wikidata SPARQL<br/>public, CC0]
-        GP[Google Places API<br/>optional, paid]
-        MOCK[Mock provider<br/>synthetic data]
-    end
+    U([Free-text query<br/>any language]) --> INT
 
     subgraph API["FastAPI service"]
+        INT[Search interpreter<br/>catalog / LLM / name match]
+        PROF[(ICP profiles<br/>profiles/*.yaml)]
         ING[Ingestion and<br/>duplicate detection]
-        ENR[Enrichment<br/>robots.txt-aware fetcher,<br/>HTML/JSON-LD extraction]
-        SCO[Scoring engine<br/>rules + gates]
-        LLM[(LLM layer<br/>mock / OpenAI)]
+        ENR[Enrichment<br/>robots.txt-aware fetcher]
+        SCO[Scoring engine<br/>profile weights + gates]
         OUT[Outreach drafts<br/>guardrails]
         CRM[CRM layer<br/>CSV / HubSpot]
         ANA[Analytics]
     end
 
-    DB[(PostgreSQL)]
-    DASH[Streamlit dashboard]
-    N8N[n8n workflows<br/>optional]
-    HUB[HubSpot]
-    WEB[(Company websites)]
+    subgraph Sources
+        OSM[OpenStreetMap<br/>Overpass + Nominatim<br/>free]
+        GP[Google Places<br/>optional, paid]
+        WD[Wikidata<br/>free]
+        CSV[CSV upload]
+    end
 
-    CSV & WD & GP & MOCK --> ING --> DB
-    ENR <--> WEB
-    DB --> ENR --> DB
-    DB --> SCO --> DB
+    LLM[(LLM<br/>OpenAI / mock)]
+    DB[(PostgreSQL)]
+    WEB[(Company websites)]
+    DASH[Streamlit dashboard]
+    N8N[n8n workflows]
+
+    INT --> PROF
+    INT -. optional .-> LLM
+    PROF --> OSM & GP & WD
+    OSM & GP & WD & CSV --> ING --> DB
+    DB --> ENR <--> WEB
+    ENR --> DB --> SCO --> DB
     SCO -. optional review .-> LLM
-    OUT -. optional drafting .-> LLM
     DB --> OUT --> DB
-    DB --> CRM --> HUB
+    OUT -. optional .-> LLM
+    DB --> CRM
     DB --> ANA
     DASH --> API
     N8N --> API
 ```
 
-Every external call goes through one HTTP client. It identifies itself with a descriptive User-Agent, rate-limits per host with a token bucket, and retries transient failures with exponential backoff and jitter, honouring `Retry-After`. Inbound API calls are rate-limited per client and can be protected with an API key.
+Every outbound call goes through one HTTP client. It identifies itself, rate-limits per host with a token bucket, and retries transient failures with exponential backoff and jitter, honouring `Retry-After`. Busy OpenStreetMap servers are retried patiently, then the next public Overpass instance is tried.
 
 ```
 app/
-├── core/          config (pydantic-settings), structured logging, retry, rate limiting, HTTP client
+├── core/          config, structured logging, retry, rate limiting, HTTP client
 ├── db/            SQLAlchemy models and session
-├── domain/        agri-food taxonomy (industries, company types, product categories, signals), normalisation
-├── providers/     discovery (mock, wikidata, google_places), web fetching, LLM (mock, openai), CRM (hubspot)
-├── services/      leads/dedup, extraction, enrichment, scoring, outreach, crm, analytics, usage
-├── api/           FastAPI routes and dependencies
+├── domain/        profiles (ICP schema + loader), business catalog, geo, keywords, normalisation
+├── providers/     discovery (openstreetmap, google_places, wikidata, mock), web fetching, LLM, CRM
+├── services/      search, leads/dedup, extraction, enrichment, scoring, outreach, crm, analytics
+├── api/           FastAPI routes
 └── main.py        app factory and middleware (request IDs, rate limiting, access logs)
+profiles/          Ideal Customer Profiles (YAML); searches add their own here
 alembic/           database migrations
-dashboard/         Streamlit internal dashboard
-data/demo/         SYNTHETIC demo dataset (CSV, mock discovery results, website fixtures)
+dashboard/         Streamlit dashboard
+data/demo/         SYNTHETIC demo datasets (CSV per profile, website fixtures)
 n8n/               importable n8n workflow
 scripts/           demo runner and demo-data generator
 tests/             unit and integration tests (no network, no keys)
 ```
-
-**Data model.** `companies` (the lead, with its latest score and status for fast filtering) has many `enrichments`, `lead_scores`, `outreach_drafts` and `crm_sync_records`. Each stage appends a record, so history and provenance are kept. `import_batches` stores dedup statistics and `usage_events` meters API and LLM cost.
 
 ---
 
@@ -123,11 +158,12 @@ tests/             unit and integration tests (no network, no keys)
 | Language | Python 3.12 |
 | API | FastAPI, Pydantic v2, pydantic-settings |
 | Data | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
+| Discovery | OpenStreetMap (Overpass, Nominatim), Google Places API, Wikidata SPARQL |
 | HTTP / parsing | httpx, BeautifulSoup |
 | AI | OpenAI API (JSON mode), deterministic mock provider |
+| Configuration | YAML profiles validated by Pydantic |
 | Orchestration | n8n (optional) |
 | Dashboard | Streamlit, Plotly, pandas |
-| Logging | structlog (JSON in containers) |
 | Quality | pytest, respx, ruff, GitHub Actions |
 | Runtime | Docker, Docker Compose |
 
@@ -146,11 +182,11 @@ docker compose up -d --build
 
 | Service | URL |
 |---|---|
-| API and interactive docs | http://localhost:8000/docs |
 | Dashboard | http://localhost:8501 |
+| API and interactive docs | http://localhost:8000/docs |
 | n8n (optional) | `docker compose --profile n8n up -d`, then http://localhost:5678 |
 
-Migrations run automatically when the API container starts.
+If a port is already used on your machine, set `DB_PORT`, `API_PORT`, `DASHBOARD_PORT` or `N8N_PORT` in `.env`. Migrations run automatically when the API starts, and `profiles/` is mounted so that profiles created by searches survive restarts.
 
 ### Option B: Local Python
 
@@ -172,142 +208,181 @@ For a quick experiment without PostgreSQL, set `DATABASE_URL=sqlite:///./leads.d
 
 ## Environment configuration
 
-All settings live in `.env` (see [`.env.example`](.env.example)). Secrets are typed as `SecretStr`, so they never appear in logs or reprs. `.env` is git-ignored.
+All settings live in `.env` (see [`.env.example`](.env.example)). Secrets are typed as `SecretStr`, so they never appear in logs. A blank value means "not configured". `.env` is git-ignored.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | local PostgreSQL | SQLAlchemy URL |
+| `DEFAULT_PROFILE` | `restaurants` | Profile for leads imported without one |
 | `API_KEY` | empty | If set, every request needs the `X-API-Key` header |
-| `API_RATE_LIMIT_PER_MINUTE` | 120 | Inbound limit per client IP |
 | `LLM_PROVIDER` | `mock` | `none`, `mock` or `openai` |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | empty, `gpt-4o-mini` | Real LLM layer |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | empty, `gpt-4o-mini` | Smart search interpretation and LLM scoring/drafting |
 | `OPENAI_INPUT_COST_PER_1M`, `OPENAI_OUTPUT_COST_PER_1M` | 0.15 / 0.60 | Unit prices for cost reporting; check current pricing |
-| `GOOGLE_PLACES_API_KEY` | empty | Enables Google Places discovery and website lookup |
+| `GOOGLE_PLACES_API_KEY` | empty | Adds Google Places as a search source |
+| `OVERPASS_URLS` | 3 public instances | OpenStreetMap servers, tried in order |
 | `HUBSPOT_ACCESS_TOKEN` | empty | Enables HubSpot sync (private-app token) |
 | `ENRICHMENT_MODE` | `auto` | `offline` never touches the network |
 | `OUTBOUND_REQUESTS_PER_SECOND` | 1.0 | Per-host politeness limit |
-| `TARGET_COUNTRIES_PRIMARY` / `_SECONDARY` | EU27 / neighbours | Geographic fit |
-| `QUALIFICATION_THRESHOLD` / `REVIEW_THRESHOLD` | 70 / 50 | Status cut-offs |
-| `SENDER_NAME`, `SENDER_COMPANY`, `SENDER_VALUE_PROPOSITION` | demo values | Used in outreach drafts |
+| `SENDER_NAME`, `SENDER_COMPANY`, `SENDER_VALUE_PROPOSITION` | placeholders | Signature and fallback pitch in drafts |
 
 ### Which integrations need credentials
 
 | Integration | Needs credentials? | Without credentials |
 |---|---|---|
-| CSV import, dedup, scoring, outreach templates, CSV export, analytics | No | Fully functional |
-| Mock discovery and mock LLM | No | Deterministic, $0 |
-| **Wikidata discovery** | **No** (public SPARQL endpoint) | Real companies, fully functional |
-| **Website enrichment** | **No** | Real websites fetched politely; synthetic `.example` sites come from fixtures |
-| OpenAI LLM layer | `OPENAI_API_KEY` | Rule-based scoring and template drafts |
-| Google Places discovery and website lookup | `GOOGLE_PLACES_API_KEY` | Provider reported as not configured (HTTP 503) |
+| Free-text search (catalog / name match), dedup, scoring, outreach templates, CSV export, analytics | No | Fully functional |
+| **OpenStreetMap discovery** (local businesses of any kind) | **No** | Fully functional; data © OpenStreetMap contributors, ODbL |
+| **Wikidata discovery** (notable companies) | **No** | Fully functional |
+| **Website enrichment** | **No** | Real websites fetched politely |
+| OpenAI (understands *any* query; LLM score review and drafts) | `OPENAI_API_KEY` + `LLM_PROVIDER=openai` | Built-in catalog, rule-based scoring and template drafts |
+| Google Places (wider coverage, small businesses) | `GOOGLE_PLACES_API_KEY` | OpenStreetMap only |
 | HubSpot sync | `HUBSPOT_ACCESS_TOKEN` | `/crm/sync` returns 503; CSV export still works |
 
 ---
 
 ## Demo
 
-The demo uses **clearly labelled synthetic data**. Every company is fictional and uses the reserved `.example` domain (RFC 2606), served from local HTML fixtures. The dataset is built by [`scripts/generate_demo_data.py`](scripts/generate_demo_data.py) and deliberately includes:
-
-- strong leads (cooperatives, exporters, wholesalers and importers in target markets)
-- weak leads (a deli with an online shop, a restaurant, a farm-software SaaS)
-- a company whose listed website belongs to someone else, so verification must fail
-- an unreachable website, companies without websites, and an almost-empty record
-- three duplicates (same domain, same legal name in another format, a near-identical name) and two invalid rows
-
-Run it:
+The demo uses **clearly labelled synthetic data** and needs no network. Every company is fictional and uses the reserved `.example` domain (RFC 2606), served from local HTML fixtures. There is one dataset per example profile: restaurants, hair salons and agri-food B2B. The datasets deliberately include strong and weak leads, a permanently closed business, a software vendor posing as a lead, a website that belongs to someone else, an unreachable site, duplicates written differently, and invalid rows.
 
 ```bash
-# with Docker Compose running:
-docker compose exec api python scripts/run_demo.py --use-llm
-
-# or locally:
-python scripts/run_demo.py --use-llm          # --reset removes previous synthetic leads only
+docker compose exec api python scripts/run_demo.py --use-llm      # with Docker
+python scripts/run_demo.py --use-llm                              # locally (--reset clears demo leads)
 ```
 
-It goes through the seven steps and prints the results of each:
+The demo walks through these steps:
 
-1. **Import leads** from `data/demo/synthetic_companies.csv` (29 rows: 24 created, 3 duplicates, 2 invalid)
-2. **Detect duplicates**, including a mock-discovery result that duplicates a CSV lead
-3. **Enrich** each company from its website (one fails on purpose, one is not verified)
-4. **Score** with the per-criterion breakdown and reasoning
-5. **Generate outreach drafts** for qualified leads (status `pending_review`)
-6. **Export** qualified leads to `exports/qualified_leads_<timestamp>.csv`
-7. **Show pipeline analytics** (funnel, conversion, average score, measured cost)
+1. **Understand free-text searches.** It previews `κρεοπωλεία στην Αθήνα`, `dental clinics` (Thessaloniki) and `αγροτικά μηχανήματα`, showing the catalog match, the tags and the name-match fallback.
+2. **Import leads** from three CSVs, one per profile.
+3. **Detect duplicates**: same domain, same name in capitals or without accents, and near-identical names.
+4. **Enrich** every company from its website.
+5. **Score** against each lead's own profile, with the full explanation of the best lead.
+6. **Generate outreach drafts** that use each profile's pitch.
+7. **Export** qualified leads to CSV.
+8. **Show analytics**, including a breakdown per profile.
 
-Then open the dashboard at http://localhost:8501 to filter leads, inspect explanations and approve or reject drafts.
+---
 
-**Real data.** Discovery works against real sources without any key:
+## Running a real search
+
+**In the dashboard** (http://localhost:8501, **🔎 Search** tab):
+
+1. Type the businesses, e.g. `κρεοπωλεία`.
+2. Optionally add a city, a radius and what you sell (used in the drafts).
+3. Click **Preview** to see exactly how the query was understood.
+4. Click **Search & score**. Results arrive in about a minute, depending on how many websites have to be read.
+
+**Through the API:**
 
 ```bash
-curl -X POST localhost:8000/discovery/search -H 'Content-Type: application/json' \
-  -d '{"provider":"wikidata","countries":["GR","CY"],"industries":["food_manufacturing","agriculture"],"limit":20}'
-curl -X POST localhost:8000/pipeline/run -H 'Content-Type: application/json' -d '{}'
+curl -X POST localhost:8000/search/interpret -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"query": "κρεοπωλεία στην Αθήνα"}'
+
+curl -X POST localhost:8000/search/run -H 'Content-Type: application/json; charset=utf-8' \
+  -d '{"query": "κρεοπωλεία στην Αθήνα", "limit": 20,
+       "offer": "an online ordering and delivery app for local food shops"}'
 ```
+
+Each search saves a profile such as `profiles/search_butcher_shops_athina.yaml`. You can edit it (weights, keywords, pitch) and re-score with `POST /scoring/run {"force": true}`.
+
+---
+
+## Ideal Customer Profiles
+
+A profile describes **who you are looking for and how to judge them**. Bundled examples:
+
+| Profile | Target | Seller pitch (example) |
+|---|---|---|
+| [`restaurants`](profiles/restaurants.yaml) | Independent restaurants, cafés and bars in Athens, Piraeus and Thessaloniki | Reservations and online-ordering platform |
+| [`hair_salons`](profiles/hair_salons.yaml) | Hair salons and barbershops | Salon booking and client-management app |
+| [`agrifood_b2b`](profiles/agrifood_b2b.yaml) | Agri-food producers, exporters, wholesalers in the EU | B2B agricultural marketplace |
+
+Writing your own is a YAML file in `profiles/`. The structure is validated on load, so a wrong weight or tag gives a clear error.
+
+```yaml
+name: dental_clinics            # must match the file name
+label: Dental clinics
+description: Private dental clinics that book appointments online.
+weights: {industry: 25, business_type: 15, geography: 20, business_signals: 20, offering: 10, completeness: 10}  # sum = 100
+thresholds: {qualified: 65, review: 45}
+gates: {require_verified_website: true, require_target_market: true}
+geography: {primary_countries: [GR], cities: [Αθήνα, Athens]}
+industries:
+  dentist:
+    label: Dental clinic
+    fit: 1.0                                  # share of the industry weight
+    synonyms: [dentist, dental clinic, οδοντιατρείο]
+    osm_tags: ["amenity=dentist", "healthcare=dentist"]
+business_types:
+  independent: {label: Independent practice, fit: 1.0, synonyms: [our practice, family dentist]}
+  chain: {label: Dental chain, fit: 0.5, synonyms: [our clinics, locations]}
+signals:
+  positive: {online_booking: [book online, appointment, ραντεβού]}
+  negative: [under construction]
+  disqualify: [permanently closed]           # always ruled out
+offering_categories:
+  - {slug: implants, label: Implants, keywords: [implants, εμφυτεύματα]}
+  - {slug: orthodontics, label: Orthodontics, core: false, keywords: [braces, invisalign]}
+outreach:
+  value_proposition: an online booking and reminder system for dental practices
+  subject: "Fewer no-shows at {name}"
+  relevance_default: Practices like {name} use it to fill cancelled slots automatically.
+  signal_lines: {online_booking: " I saw you already take appointments online."}
+```
+
+Then use it: `POST /discovery/search {"provider": "openstreetmap", "profile": "dental_clinics", "countries": ["GR"], "cities": ["Αθήνα"]}`, or import a CSV with `profile=dental_clinics`.
 
 ---
 
 ## Example API requests
 
-The full OpenAPI documentation is at `/docs`. If `API_KEY` is set, add `-H "X-API-Key: $API_KEY"` to each request.
+The full OpenAPI documentation is at `/docs`. If `API_KEY` is set, add `-H "X-API-Key: $API_KEY"`.
 
 ```bash
-# Import a CSV (needs at least a "name" column; website/country/industry/... are optional)
-curl -F "file=@data/demo/synthetic_companies.csv" localhost:8000/leads/import
+# Profiles
+curl localhost:8000/profiles
+curl localhost:8000/profiles/hair_salons
 
-# Create leads as JSON
-curl -X POST localhost:8000/leads -H 'Content-Type: application/json' -d '[
-  {"name":"Crete Avocado Growers","website":"https://crete-avocado.example",
-   "country":"GR","industry":"Agriculture","company_type":"Grower"}]'
-
-# Discover (mock | wikidata | google_places)
+# Discovery with a profile (openstreetmap | google_places | wikidata | mock)
 curl -X POST localhost:8000/discovery/search -H 'Content-Type: application/json' \
-  -d '{"provider":"mock","countries":["GR","IT"],"limit":10}'
+  -d '{"provider":"openstreetmap","profile":"hair_salons","countries":["GR"],"cities":["Thessaloniki"],"limit":20}'
 
-# Enrich, score (with optional LLM review) and draft, one stage at a time or all at once
-curl -X POST localhost:8000/enrichment/run   -H 'Content-Type: application/json' -d '{"limit":100}'
-curl -X POST localhost:8000/scoring/run      -H 'Content-Type: application/json' -d '{"use_llm":true}'
-curl -X POST localhost:8000/outreach/generate -H 'Content-Type: application/json' -d '{}'
-curl -X POST localhost:8000/pipeline/run     -H 'Content-Type: application/json' -d '{"use_llm":false}'
+# Import a CSV for a profile (needs at least a "name" column)
+curl -F "profile=restaurants" -F "file=@data/demo/restaurants.csv" localhost:8000/leads/import
 
-# Score one lead and get the structured result
+# Enrich, score (optional LLM review) and draft: per stage or all at once
+curl -X POST localhost:8000/pipeline/run -H 'Content-Type: application/json' -d '{"use_llm":false}'
 curl -X POST "localhost:8000/leads/1/score?use_llm=true"
 
 # Filter leads
-curl "localhost:8000/leads?country=GR&qualification=qualified&min_score=70"
+curl "localhost:8000/leads?profile=restaurants&qualification=qualified&min_score=70"
 
-# Review a draft (approve / reject / edit)
+# Review a draft, export, sync, analytics
 curl -X PATCH localhost:8000/outreach/drafts/1 -H 'Content-Type: application/json' \
   -d '{"status":"approved","reviewer_notes":"OK to send manually"}'
-
-# Export qualified leads / sync to HubSpot / inspect failures
 curl -X POST localhost:8000/crm/export/csv -H 'Content-Type: application/json' -d '{}' -o qualified.csv
 curl -X POST localhost:8000/crm/sync -H 'Content-Type: application/json' -d '{"provider":"hubspot"}'
-curl "localhost:8000/crm/sync-records?status=failed"
-
-# Analytics
-curl localhost:8000/analytics/summary
+curl "localhost:8000/analytics/summary?profile=restaurants"
 ```
 
 Example scoring response (`POST /leads/{id}/score?use_llm=true`, synthetic demo lead, mock LLM), abridged:
 
 ```json
 {
-  "score": 92,
-  "rule_score": 89,
+  "profile": "restaurants",
+  "score": 100,
+  "rule_score": 98,
   "llm_adjustment": 3,
   "confidence": 1.0,
   "status": "qualified",
-  "reasoning": "Final score 92/100 (qualified). Rule-based score 89/100 (qualified). Strengths: industry 'agriculture'; Greece is a primary target market. LLM review (+3): Aegean Citrus Growers Cooperative lists Fresh fruit with business signals: wholesale, bulk_supply, export, import, b2b_explicit.",
+  "reasoning": "Final score 100/100 (qualified). Rule-based score 98/100 (qualified) for profile 'Restaurants, cafés & bars'. Strengths: industry: Restaurant / taverna; business type: Independent / family-run. LLM review (+3): ...",
   "breakdown": [
-    {"criterion": "industry_relevance",         "points": 25, "max_points": 25, "reasons": ["industry 'agriculture'"]},
-    {"criterion": "marketplace_compatibility",  "points": 18, "max_points": 20, "reasons": ["company type 'cooperative'"]},
-    {"criterion": "geographic_fit",             "points": 15, "max_points": 15, "reasons": ["Greece is a primary target market"]},
-    {"criterion": "b2b_business_model",         "points": 15, "max_points": 15, "reasons": ["'cooperative' is a B2B company type", "B2B signals: wholesale, bulk_supply, export, import, b2b_explicit"]},
-    {"criterion": "product_category_relevance", "points": 6,  "max_points": 15, "reasons": ["core marketplace categories: Fresh fruit"]},
-    {"criterion": "data_completeness",          "points": 10, "max_points": 10, "reasons": ["available: website, website verified, summary, country, products detected, source URL"]}
+    {"criterion": "industry_relevance", "points": 25, "max_points": 25, "reasons": ["industry: Restaurant / taverna"]},
+    {"criterion": "business_type_fit",  "points": 15, "max_points": 15, "reasons": ["business type: Independent / family-run"]},
+    {"criterion": "geographic_fit",     "points": 20, "max_points": 20, "reasons": ["Piraeus is a target city"]},
+    {"criterion": "business_signals",   "points": 20, "max_points": 20, "reasons": ["'Independent / family-run' matches the target business model", "signals: reservations, events, menu_online, opening_hours"]},
+    {"criterion": "offering_relevance", "points": 8,  "max_points": 10, "reasons": ["core offerings: Greek cuisine, Seafood"]},
+    {"criterion": "data_completeness",  "points": 10, "max_points": 10, "reasons": ["available: website, website verified, summary, country, offerings detected, source URL"]}
   ],
-  "llm_analysis": {"model": "...", "adjustment": 3, "reasoning": "...", "risks": [], "recommended_next_step": "..."},
-  "scoring_version": "rules-v1+llm"
+  "scoring_version": "rules-v2+llm"
 }
 ```
 
@@ -315,96 +390,109 @@ Example scoring response (`POST /leads/{id}/score?use_llm=true`, synthetic demo 
 
 ## Screenshots
 
-Screenshots of the demo dataset live in [`docs/screenshots/`](docs/screenshots/).
+| Search: what was understood | Search: results |
+|---|---|
+| ![Search preview](docs/screenshots/search_preview.png) | ![Search results](docs/screenshots/search_results.png) |
 
-| Overview | Lead explanation | Outreach review |
+| Lead explanation | Overview | Outreach review |
 |---|---|---|
-| ![Overview](docs/screenshots/overview.png) | ![Lead detail](docs/screenshots/lead_detail.png) | ![Outreach review](docs/screenshots/outreach.png) |
+| ![Lead detail](docs/screenshots/lead_detail.png) | ![Overview](docs/screenshots/overview.png) | ![Outreach review](docs/screenshots/outreach.png) |
 
-To regenerate them: run the demo, open the dashboard and capture the three tabs.
+The search screenshots show a real search for hair salons in Athens (OpenStreetMap). The other screenshots show the synthetic demo data plus those results.
 
 ---
 
 ## How qualification works
 
-**Layer 1: deterministic rules** (always on, same input gives the same output). Every point comes with a reason.
+**Layer 1: deterministic rules** (always on, same input gives the same output). The six criteria and their weights come from the lead's profile:
 
-| Criterion | Max | Based on |
+| Criterion | Default max | Based on |
 |---|---|---|
-| Industry relevance | 25 | Canonical industry; product evidence partly substitutes for an unknown industry |
-| Marketplace compatibility | 20 | Company type (exporter, wholesaler, cooperative, ... vs retailer, restaurant, SaaS) |
-| Geographic fit | 15 | Primary / secondary / other target markets (configurable) |
-| B2B business model | 15 | B2B company type plus website signals (wholesale, bulk, export, HORECA, MOQ, private label, certifications); consumer-only shops are penalised |
-| Product category relevance | 15 | Core marketplace categories (fruit, vegetables, olive oil, grains, legumes, nuts, herbs, honey) vs adjacent ones |
-| Data completeness | 10 | Website, verification, summary, country, products, source URL |
+| Industry relevance | 25 | The profile's industries and their `fit`; offering evidence partly substitutes for an unknown industry |
+| Business type fit | 20 | The profile's business types (e.g. independent vs franchise vs supplier) |
+| Geographic fit | 15 | Primary / secondary countries and optional focus cities |
+| Business signals | 15 | Matching the target model plus website signals (online booking, wholesale, delivery, …); negative signals lower it |
+| Offering relevance | 15 | Core vs adjacent offering categories found on the website |
+| Data completeness | 10 | Website, verification, summary, country, offerings, source URL |
 
-**Statuses.** `qualified` ≥ 70, `needs_review` ≥ 50, `disqualified` < 50, and `insufficient_data` when completeness is below 4/10.
+**Statuses.** A score at or above the profile's `qualified` threshold is `qualified`; at or above `review` it is `needs_review`; below that it is `disqualified`. A lead with too little evidence is `insufficient_data`.
 
-**Hard gates.** A lead without a verified official website, or outside the target markets, is never auto-qualified. It is held at `needs_review` for a person to decide.
+**Hard rules.**
+- No verified official website, or outside the target markets: the lead is held at `needs_review` for a person to decide.
+- A `disqualify` phrase on the website (e.g. "permanently closed"): the lead is always `disqualified`, and the reasoning says why.
 
-**Confidence** reflects how much verified evidence the score is based on, not how high the score is.
+**Confidence** reflects how much verified evidence the score rests on, not how high the score is.
 
-**Layer 2: optional LLM review.** The LLM gets the same verified facts plus the rule breakdown. It returns `adjustment` (clamped to ±10), reasoning, risks and a next step as JSON. If the LLM fails or returns invalid JSON, the rule score stands and the failure is recorded.
+**Layer 2: optional LLM review.** The LLM gets the profile, the verified facts and the rule breakdown. It returns an `adjustment` (clamped to ±10), reasoning, risks and a next step. If the LLM fails, the rule score stands and the failure is recorded.
 
-**Outreach guardrails.** LLM drafts are rejected and replaced by the template if they leave out the company name, contain placeholders, include numbers that aren't in the facts, use hype or guarantee language, or mention certifications such as "organic" or "ISO" that weren't verified. Facts from a website that wasn't verified are excluded from personalisation.
+**Outreach guardrails.** LLM drafts are rejected and replaced by the template if they leave out the company name, contain placeholders, include numbers that aren't in the facts or your pitch, use hype or guarantee language, or claim certifications that weren't verified. Facts from a website that wasn't verified are excluded from personalisation.
 
-**Responsible enrichment.** The engine respects robots.txt (RFC 9309: 5xx or unreachable means disallow), identifies itself, rate-limits per host, and never bypasses anti-bot measures. A 401, 403 or 429 response, or a CAPTCHA/challenge page, is recorded as `blocked`.
+**Responsible data collection.** The engine respects robots.txt (RFC 9309), identifies itself, rate-limits per host, and never bypasses anti-bot measures. A 401, 403 or 429 response, or a CAPTCHA page, is recorded as `blocked`. Social profiles, webmail addresses and marketplace pages are never treated as official websites. Only company-level information is collected, never personal data about individuals.
 
 ---
 
 ## Testing
 
 ```bash
-pytest                                   # 98 tests, no network, no API keys (SQLite in-memory)
+pytest                                   # 154 tests, no network, no API keys (SQLite in-memory)
 pytest --cov=app --cov-report=term-missing
 DATABASE_URL=postgresql+psycopg://leads:leads@localhost:5432/leads pytest   # against PostgreSQL
 ruff check . && ruff format --check .
 ```
 
-- **Unit tests:** normalisation, taxonomy, HTML extraction, scoring rules and gates, LLM clamping and fallback, outreach guardrails, retry/backoff, rate limiters, CSV parsing and dedup, and every provider (Wikidata, Google Places, website fetcher incl. robots.txt and anti-bot handling, OpenAI, HubSpot) with mocked HTTP.
-- **Integration tests:** the full API flow (import → enrich → score → draft → review → export → analytics), idempotent re-runs, validation errors, CRM duplicate prevention and failure recording, API-key auth and rate limiting.
+- **Unit tests:**
+  - Greek and Latin name normalisation
+  - Profile validation and every bundled profile
+  - The bilingual catalog (accents, inflection, overlaps like *dental clinic* vs *clinic*, *barber* vs *bar*)
+  - Search interpretation by catalog, name match and LLM, including validation and fallback
+  - OpenStreetMap queries, geocoding, deduplication and server failover
+  - Extraction, scoring rules, gates and disqualifiers
+  - LLM clamping and fallback, outreach guardrails
+  - Retry and rate limiting
+  - Every external provider, with mocked HTTP
+- **Integration tests:**
+  - The full API flow, with a free-text search end to end (mocked OpenStreetMap plus fixture websites)
+  - Per-profile scoring
+  - Idempotent re-runs, CRM duplicate prevention and failure logging, auth and rate limiting
 - **CI** (GitHub Actions): lint, tests on SQLite and PostgreSQL, `alembic upgrade/check/downgrade`, the end-to-end demo, and a Docker build.
 
 ---
 
 ## Business Impact & GTM Use Cases
 
-This section explains what the system is designed to change and how to measure whether it does. **No performance or ROI figures are claimed here.** The demo runs on synthetic data, so its numbers say nothing about real-world results.
+This section explains what the system is designed to change and how to measure whether it does. **No performance or ROI figures are claimed.** The demo runs on synthetic data, so its numbers say nothing about real-world results.
 
 ### What it is designed to improve
 
-**Less manual prospect research.** Collecting a company's website, location, product categories and business model, and deciding whether it is B2B, is the repetitive part of research. The engine does this from the company's own website and keeps the source URLs, so a researcher checks evidence instead of gathering it.
+**Less manual prospect research.** Finding businesses of a given type in a given area, opening their websites and noting what they offer and whether they fit is the repetitive part of prospecting. The engine does it from public sources and the companies' own websites, and keeps the source URLs, so a person checks evidence instead of gathering it.
 
-**Standardised qualification.** The same rules apply to every lead in every market, and every point is explained. Sales, marketplace and country teams can argue about *weights* (code-reviewed in [`app/domain/taxonomy.py`](app/domain/taxonomy.py) and [`app/services/scoring.py`](app/services/scoring.py)) instead of individual opinions. Hard gates keep uncertain leads with a person.
+**Standardised qualification.** Each profile applies the same explicit rules to every lead, and every point is explained. Teams can discuss *weights and keywords* in a versioned YAML file instead of individual opinions. Hard gates keep uncertain leads with a person.
 
-**Support for marketplace expansion.** Geographic fit, the company-type taxonomy and the product categories are configurable, so opening a new country or category means changing configuration rather than retraining researchers. The engine scores both sides of the marketplace: supply (producers, cooperatives, exporters) and demand (wholesalers, importers, distributors). Outreach is framed for each side.
+**Fast expansion into new segments and markets.** A new vertical or city is a sentence in the search box or a new profile file, not a new research process. The same pipeline serves very different targets, such as restaurants, salons, clinics or B2B suppliers.
 
-**Cleaner CRM.** Domain and name-based deduplication on import, plus domain lookup and stored external IDs on sync, are designed to prevent duplicate CRM records.
+**Cleaner CRM.** Domain and name-based deduplication on import (Greek and Latin names), plus domain lookup and stored external IDs on sync, are designed to prevent duplicate CRM records.
 
 ### GTM use cases
 
-1. **Market entry research.** Discover and qualify producers and buyers in a new country before a launch.
-2. **Category expansion.** Find suppliers for a new product category, such as nuts and dried fruit, and rank them.
-3. **Inbound list triage.** Score trade-fair or partner lists (CSV) in one batch and route `needs_review` leads to people.
-4. **CRM hygiene.** Re-enrich existing accounts, flag near-duplicates (`GET /leads/duplicates`) and fill missing fields with evidence.
-5. **SDR preparation.** Give SDRs a reviewed draft and the verified facts behind it, so personalisation stays accurate.
-6. **Scheduled pipeline.** The included n8n workflow runs discovery and qualification every week and reminds the team about drafts waiting for review.
+1. **New-market entry.** Search and qualify a vertical in a new city or country before a launch.
+2. **New segment testing.** Compare how many good-fit businesses exist for several candidate segments.
+3. **Territory planning.** Split qualified leads by city or area for field or inside sales.
+4. **List triage.** Score trade-fair, partner or purchased lists (CSV) in one batch and route `needs_review` leads to people.
+5. **CRM hygiene.** Re-enrich existing accounts, flag near-duplicates (`GET /leads/duplicates`) and fill missing fields with evidence.
+6. **SDR preparation.** Give SDRs a reviewed draft and the verified facts behind it.
+7. **Scheduled prospecting.** The included n8n workflow runs discovery and qualification on a schedule and reminds the team about drafts waiting for review.
 
 ### How to measure actual results
 
-Run a controlled comparison and report what you observe:
-
 | Question | Metric | How to measure |
 |---|---|---|
-| Does it save research time? | Minutes per researched lead | Time a baseline sample researched manually; time the same number with the engine (review time included). Compare medians. |
-| Is enrichment accurate? | Precision of extracted fields | Have a reviewer check a random sample (e.g. 50 leads) for website, country, categories and B2B model; record the % correct per field. |
-| Is scoring useful? | Agreement with experts; conversion by score band | Ask two or three people to label a sample (qualified / not); compute agreement with the engine. Then track reply and meeting rates per score band in the CRM. |
-| Is qualification consistent? | Inter-rater agreement before/after | Compare how often people agree with each other vs how often they agree with the engine on the same sample. |
-| Does outreach perform? | Reply rate, positive reply rate, edit rate | Track approved drafts in the CRM; record how much reviewers edit drafts (`reviewer_notes`, edited body). |
-| Is the CRM cleaner? | Duplicate rate | Measure duplicate companies per 1,000 records before and after; compare with `duplicates_blocked` in analytics. |
-| What does it cost? | $ per qualified lead | `GET /analytics/summary` → `total_cost_usd` (from token and request counts and your configured prices) ÷ qualified leads. |
-
-The API already exposes pipeline counts, conversion rates between stages, duplicates blocked and measured API/LLM cost (`/analytics/summary`, dashboard *Overview*). Outcome metrics such as replies, meetings and deals belong in the CRM and should be joined on the exported `company_id` or CRM ID.
+| Does it save research time? | Minutes per researched lead | Time a baseline sample done manually and the same number done with the engine (review time included). Compare medians. |
+| Is discovery complete enough? | Recall against a known list | For one city and vertical, compare results with a manually built list; note what is missing and why (no website, not on OSM). |
+| Is enrichment accurate? | Precision per field | Have a reviewer check a random sample (e.g. 50 leads) for website, location, offerings and type; record the % correct. |
+| Is scoring useful? | Agreement with experts; conversion by score band | Ask two or three people to label a sample and compute agreement. Then track reply and meeting rates per score band in the CRM. |
+| Does outreach perform? | Reply rate, positive reply rate, edit rate | Track approved drafts in the CRM; record how much reviewers edit them. |
+| Is the CRM cleaner? | Duplicate rate | Duplicates per 1,000 records before and after; compare with `duplicates_blocked`. |
+| What does it cost? | $ per qualified lead | `total_cost_usd` from `/analytics/summary` ÷ qualified leads. |
 
 ---
 
@@ -412,26 +500,25 @@ The API already exposes pipeline counts, conversion rates between stages, duplic
 
 **Current limitations**
 
-- **Keyword taxonomy in English.** Category and signal detection uses English keywords. Sites only in Greek, Spanish or Italian give fewer signals. The engine prefers a site's own `hreflang="en"` version when there is one, but multilingual keyword sets (or embeddings) are the next step.
-- **Shallow crawling.** Only the homepage, an English alternate and one "about"/"products" page are read. That is intentional for politeness, but some facts will be missed.
-- **Coverage of public sources.** Wikidata mostly covers larger or notable companies. Small farms and traders need commercial B2B datasets, chambers of commerce, trade-fair lists or Google Places.
-- **Google Places terms.** Google's terms limit how long Places content may be cached. Only the place ID (`source_ref`) is meant for permanent storage, so review the terms before storing results long-term.
-- **Synchronous batches.** Pipeline runs execute inside the API request. That is fine for hundreds of leads; larger volumes need a job queue.
-- **Fuzzy dedup at import** compares names within a country and with the same first token. Very differently written names of the same company can still slip through; `GET /leads/duplicates` surfaces candidates for review.
-- **Contacts.** The engine works at company level and deliberately doesn't collect personal data about individuals.
+- **Coverage depends on the source.** OpenStreetMap is free and good for shops and local businesses, but completeness varies by city and many small businesses have no website tag. Google Places gives wider coverage but needs a paid key.
+- **The catalog is bilingual.** Without an LLM, queries are understood in Greek and English, and other wording falls back to name matching. With `LLM_PROVIDER=openai`, any wording and language works.
+- **Shallow, English-leaning website reading.** Only the homepage, an English alternate and one about/products page are read, which keeps the crawler polite. Profiles can include keywords in several languages; the bundled ones mix Greek and English.
+- **Public OpenStreetMap servers can be slow or busy.** The engine retries and fails over between instances, but searches can take a minute or two. For heavy use, run your own Overpass instance (`OVERPASS_URLS`).
+- **Synchronous runs.** A search enriches its new leads inside the request. That is fine for tens of leads; larger volumes need a job queue.
+- **Licences and terms.** OpenStreetMap data is ODbL (keep attribution). Google Places content has caching restrictions (only the place ID is meant for permanent storage). Wikidata is CC0.
+- **Company-level only.** The engine deliberately collects no personal contact data.
 
 **Future improvements**
 
-- Background workers (e.g. Celery/RQ or Postgres-based queues) with progress tracking
-- Multilingual taxonomy (EL/ES/IT/FR/DE) and embedding-based category matching
-- Additional sources: Companies House, OpenCorporates, EU trade registers, trade-fair exhibitor lists
-- Feedback loop: learn weights from CRM outcomes and keep rules as the explainable baseline
-- Per-market scoring profiles and A/B testing of outreach templates
-- GDPR tooling: retention policies and data-subject request handling for any contact data
-- Pipedrive / Salesforce CRM providers
+- Background jobs with progress (Celery/RQ or Postgres queues) and parallel enrichment
+- Profile editor in the dashboard and A/B comparison of profiles
+- More discovery sources (business registers, chambers of commerce, trade-fair lists)
+- Learning weights from CRM outcomes, keeping the rules as the explainable baseline
+- Multilingual offering detection with embeddings
+- More CRM providers (Pipedrive, Salesforce)
 
 ---
 
 ## Licence
 
-[MIT](LICENSE). The demo dataset is synthetic and fictional.
+[MIT](LICENSE). The demo datasets are synthetic and fictional. Map data © OpenStreetMap contributors (ODbL).

@@ -4,12 +4,14 @@ from app.core.config import Settings
 from app.providers.discovery.base import DiscoveryError, DiscoveryProvider
 from app.providers.discovery.google_places import GooglePlacesDiscoveryProvider
 from app.providers.discovery.mock import MockDiscoveryProvider
+from app.providers.discovery.openstreetmap import OpenStreetMapDiscoveryProvider
 from app.providers.discovery.wikidata import WikidataDiscoveryProvider
 
 PROVIDERS: dict[str, type[DiscoveryProvider]] = {
-    "mock": MockDiscoveryProvider,
-    "wikidata": WikidataDiscoveryProvider,
+    "openstreetmap": OpenStreetMapDiscoveryProvider,
     "google_places": GooglePlacesDiscoveryProvider,
+    "wikidata": WikidataDiscoveryProvider,
+    "mock": MockDiscoveryProvider,
 }
 
 

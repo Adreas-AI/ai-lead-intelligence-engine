@@ -13,8 +13,12 @@ from app.services.crm import CrmSyncService
 pytestmark = pytest.mark.integration
 
 
-def _import(client, demo_csv):
-    r = client.post("/leads/import", files={"file": ("demo.csv", demo_csv, "text/csv")})
+def _import(client, demo_csv, profile="agrifood_b2b"):
+    r = client.post(
+        "/leads/import",
+        data={"profile": profile},
+        files={"file": ("demo.csv", demo_csv, "text/csv")},
+    )
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -23,6 +27,7 @@ def test_health(client):
     body = client.get("/health").json()
     assert body["status"] == "ok" and body["llm_provider"] == "mock"
     assert body["integrations"] == {"openai": False, "google_places": False, "hubspot": False}
+    assert body["default_profile"] == "restaurants"
 
 
 def test_full_pipeline(client, demo_csv, settings):
@@ -114,6 +119,7 @@ def test_single_lead_scoring_returns_structured_json(client):
                 "company_type": "Grower",
             }
         ],
+        params={"profile": "agrifood_b2b"},
     )
     company_id = r.json()["created_ids"][0]
     assert client.post(f"/leads/{company_id}/enrich").json()["status"] == "success"
@@ -124,15 +130,21 @@ def test_single_lead_scoring_returns_structured_json(client):
 
 def test_discovery_mock_saves_and_deduplicates(client, demo_csv):
     _import(client, demo_csv)
-    r = client.post("/discovery/search", json={"provider": "mock", "limit": 50})
+    r = client.post(
+        "/discovery/search", json={"provider": "mock", "profile": "agrifood_b2b", "limit": 50}
+    )
     body = r.json()
-    assert body["found"] == 7
+    assert body["found"] == 7 and body["profile"] == "agrifood_b2b"
     assert body["import_report"]["created"] == 6
     assert body["import_report"]["duplicates"][0]["reason"] == "same_domain"
     providers = {p["name"]: p for p in client.get("/discovery/providers").json()}
     assert providers["google_places"]["configured"] is False
     assert client.post("/discovery/search", json={"provider": "google_places"}).status_code == 503
     assert client.post("/discovery/search", json={"provider": "nope"}).status_code == 422
+    assert (
+        client.post("/discovery/search", json={"provider": "mock", "profile": "nope"}).status_code
+        == 422
+    )
 
 
 def test_validation_errors(client):
@@ -220,3 +232,103 @@ def test_api_key_and_rate_limit(engine, settings):
         r = c.get("/leads", headers={"X-API-Key": "s3cret"})
         assert r.status_code == 429 and "Retry-After" in r.headers
         assert c.get("/health").status_code == 200  # health is exempt
+
+
+def test_profiles_endpoints(client):
+    names = {p["name"] for p in client.get("/profiles").json()}
+    assert {"restaurants", "hair_salons", "agrifood_b2b"} <= names
+    detail = client.get("/profiles/hair_salons").json()
+    assert detail["industries"]["hair_salon"]["osm_tags"] == ["shop=hairdresser"]
+    assert client.get("/profiles/nope").status_code == 404
+
+
+def test_each_profile_scores_its_own_leads(client, demo_csv_for):
+    for profile in ("restaurants", "hair_salons"):
+        _import(client, demo_csv_for(profile), profile)
+    client.post("/pipeline/run", json={})
+    salons = client.get("/leads", params={"profile": "hair_salons", "limit": 50}).json()["items"]
+    by_name = {lead["name"]: lead for lead in salons}
+    assert by_name["Lumière Hair Studio"]["qualification_status"] == "qualified"
+    assert by_name["Cosmo Beauty Supplies"]["qualification_status"] == "disqualified"
+    rest = client.get("/leads", params={"profile": "restaurants", "limit": 50}).json()["items"]
+    by_name = {lead["name"]: lead for lead in rest}
+    assert by_name["To Limani Ouzeri"]["qualification_status"] == "qualified"
+    assert by_name["Taverna Palia Poli"]["qualification_status"] == "disqualified"  # closed
+    assert by_name["MenuSoft"]["qualification_status"] == "disqualified"
+    detail = client.get(f"/leads/{by_name['To Limani Ouzeri']['id']}").json()
+    assert detail["latest_score"]["profile"] == "restaurants"
+    assert "More direct bookings" in detail["drafts"][0]["subject"]
+    stats = client.get("/analytics/summary", params={"profile": "hair_salons"}).json()
+    assert stats["total_leads"] == 6
+    assert {c["key"] for c in client.get("/analytics/summary").json()["by_profile"]} == {
+        "restaurants",
+        "hair_salons",
+    }
+
+
+def test_free_text_search_end_to_end(client, settings):
+    import httpx
+    import respx
+
+    elements = [
+        {
+            "type": "node",
+            "id": 10,
+            "tags": {
+                "shop": "hairdresser",
+                "name": "Lumière Hair Studio",
+                "website": "https://lumiere-hair.example",
+                "addr:city": "Athens",
+            },
+        },
+        {
+            "type": "node",
+            "id": 11,
+            "tags": {
+                "shop": "hairdresser",
+                "name": "Studio Nine Hair",
+                "website": "https://studio-nine.example",
+            },
+        },
+    ]
+    preview = client.post("/search/interpret", json={"query": "κομμωτήρια στην Αθήνα"}).json()
+    assert preview["method"] == "catalog" and preview["osm_tags"] == ["shop=hairdresser"]
+    with respx.mock(assert_all_called=True) as mock:
+        mock.get(settings.nominatim_url).mock(
+            return_value=httpx.Response(200, json=[{"lat": "37.97", "lon": "23.73"}])
+        )
+        mock.post(settings.overpass_endpoints[0]).mock(
+            return_value=httpx.Response(200, json={"elements": elements})
+        )
+        r = client.post(
+            "/search/run",
+            json={
+                "query": "κομμωτήρια στην Αθήνα",
+                "limit": 10,
+                "offer": "an online booking app for salons",
+            },
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["plan"]["profile_name"] == preview["profile_name"]
+    assert body["discovery"][0]["found"] == 2
+    assert body["pipeline"]["scoring"]["succeeded"] == 2
+    leads = {lead["name"]: lead for lead in body["leads"]}
+    assert leads["Lumière Hair Studio"]["qualification_status"] == "qualified"
+    assert leads["Lumière Hair Studio"]["profile"] == preview["profile_name"]
+    # the generated profile was saved and can be inspected / edited
+    saved = client.get(f"/profiles/{preview['profile_name']}").json()
+    assert saved["outreach"]["value_proposition"] == "an online booking app for salons"
+    lead_id = leads["Lumière Hair Studio"]["id"]
+    draft = client.get(f"/leads/{lead_id}").json()["drafts"][0]
+    assert "an online booking app for salons" in draft["body"]
+
+
+def test_search_rejects_bad_input(client):
+    assert client.post("/search/interpret", json={"query": "x"}).status_code == 422
+    assert (
+        client.post(
+            "/search/interpret", json={"query": "bakeries", "country": "Narnia"}
+        ).status_code
+        == 422
+    )

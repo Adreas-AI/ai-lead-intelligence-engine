@@ -5,7 +5,7 @@ Every company here is fictional. Websites use the reserved ``.example`` TLD
 local HTML fixtures by the enrichment engine.
 
 Outputs (committed to the repo, regenerate with ``python scripts/generate_demo_data.py``):
-  data/demo/synthetic_companies.csv   - CSV import incl. duplicates and invalid rows
+  data/demo/<profile>.csv             - CSV imports per profile, incl. duplicates and invalid rows
   data/demo/mock_discovery.json       - results returned by the "mock" discovery provider
   data/demo/websites/*.html           - synthetic website fixtures
 """
@@ -220,6 +220,218 @@ SITE_SPECS: dict[str, dict] = {
         "jsonld": ("France", "Lyon"),
     },
 }
+
+# --- Restaurants & hair salons (profiles/restaurants.yaml, profiles/hair_salons.yaml) ---
+SITE_SPECS.update(
+    {
+        "limani-ouzeri.example": {
+            "name": "To Limani Ouzeri",
+            "type": "Restaurant",
+            "description": "Family-run seafood taverna by the port of Piraeus since 1978.",
+            "body": "Family-run ouzeri serving fresh fish, octopus and traditional Greek meze. "
+            "Book a table online or call us. We host private events and group bookings. "
+            "Opening hours: open daily from noon. See our menu.",
+            "jsonld": ("Greece", "Piraeus"),
+        },
+        "nonna-elena.example": {
+            "name": "Trattoria Nonna Elena",
+            "type": "Restaurant",
+            "description": "Italian trattoria in Thessaloniki: fresh pasta and wood-fired pizza.",
+            "body": "Our family trattoria makes fresh pasta, risotto and pizza every day. "
+            "Reserve a table or order online for delivery and takeaway.",
+            "jsonld": ("Greece", "Thessaloniki"),
+        },
+        "kafeneio-plateia.example": {
+            "name": "Kafeneio Plateia",
+            "type": "CafeOrCoffeeShop",
+            "description": "Neighbourhood cafe in Athens serving coffee and brunch.",
+            "body": "Specialty coffee, espresso, brunch and homemade pastries. Opening hours: "
+            "open daily from morning to evening. Find our menu on this page.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "burgerhub.example": {
+            "name": "BurgerHub",
+            "type": "Restaurant",
+            "description": "Burger franchise with stores across Greece.",
+            "body": "Fast food burgers. Franchise opportunities available - see our store locator. "
+            "Order online for delivery.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "palia-poli.example": {
+            "name": "Taverna Palia Poli",
+            "type": "Restaurant",
+            "description": "Taverna in Ano Poli, Thessaloniki.",
+            "body": "Thank you for all these years together. The taverna is now permanently closed.",
+            "jsonld": ("Greece", "Thessaloniki"),
+        },
+        "menusoft.example": {
+            "name": "MenuSoft",
+            "description": "SaaS platform for restaurants: digital menus and POS.",
+            "body": "Software platform for restaurants. Request a demo of our SaaS.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "lumiere-hair.example": {
+            "name": "Lumière Hair Studio",
+            "type": "HairSalon",
+            "description": "Independent hair salon in Kolonaki, Athens.",
+            "body": "Our team specialises in balayage, highlights and keratin treatments, as well "
+            "as haircuts and styling. Book online at any time. Gift vouchers available.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "kerasi-barber.example": {
+            "name": "Kerasi Barber Co.",
+            "type": "HairSalon",
+            "description": "Barbershop in the centre of Thessaloniki.",
+            "body": "Classic barbershop: haircuts, fade, beard trim and hot-towel shave. "
+            "Book now - online booking for all our barbers.",
+            "jsonld": ("Greece", "Thessaloniki"),
+        },
+        "bella-nails.example": {
+            "name": "Bella Nails & Beauty",
+            "type": "NailSalon",
+            "description": "Nail salon offering manicure and pedicure.",
+            "body": "Manicure, pedicure, gel nails and waxing. Call us for an appointment.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "salonica-academy.example": {
+            "name": "Salonica Hair Academy",
+            "description": "Hairdressing school with professional training courses.",
+            "body": "Training courses and seminars for hairdressers: cutting, colour and styling.",
+            "jsonld": ("Greece", "Thessaloniki"),
+        },
+        "cosmo-supplies.example": {
+            "name": "Cosmo Beauty Supplies",
+            "type": "Store",
+            "description": "Online shop for professional hair products.",
+            "body": "Hair products and salon equipment at wholesale prices. Add to cart, "
+            "free shipping on orders over a minimum amount.",
+            "jsonld": ("Greece", "Athens"),
+        },
+        "studio-nine.example": {
+            "name": "Studio Nine Hair",
+            "type": "HairSalon",
+            "description": "Hair studio in Patras: colour, cuts and bridal hair.",
+            "body": "Our salon offers haircuts, colour, ombre and bridal hair for weddings. "
+            "Book an appointment online.",
+            "jsonld": ("Greece", "Patras"),
+        },
+    }
+)
+
+RESTAURANT_ROWS = [
+    (
+        "To Limani Ouzeri",
+        "https://limani-ouzeri.example",
+        "GR",
+        "Piraeus",
+        "Taverna",
+        "Family-run",
+        "",
+        "seafood",
+    ),
+    (
+        "Trattoria Nonna Elena",
+        "https://nonna-elena.example",
+        "GR",
+        "Thessaloniki",
+        "Restaurant",
+        "",
+        "",
+        "italian",
+    ),
+    (
+        "Kafeneio Plateia",
+        "https://kafeneio-plateia.example",
+        "GR",
+        "Athens",
+        "Cafe",
+        "Independent",
+        "",
+        "",
+    ),
+    ("BurgerHub", "https://burgerhub.example", "GR", "Athens", "Fast food", "Franchise", "", ""),
+    (
+        "Taverna Palia Poli",
+        "https://palia-poli.example",
+        "GR",
+        "Thessaloniki",
+        "Taverna",
+        "",
+        "",
+        "",
+    ),
+    ("MenuSoft", "https://menusoft.example", "GR", "Athens", "Software", "Software vendor", "", ""),
+    ("Psistaria O Nikos", "", "GR", "Athens", "Grill", "", "Neighbourhood grill house.", ""),
+    # duplicates (same domain; same name in another format)
+    ("To Limani Ouzeri", "https://www.limani-ouzeri.example/", "GR", "", "", "", "", ""),
+    ("TRATTORIA NONNA ELENA", "", "GR", "", "", "", "", ""),
+]
+
+SALON_ROWS = [
+    (
+        "Lumière Hair Studio",
+        "https://lumiere-hair.example",
+        "GR",
+        "Athens",
+        "Hair salon",
+        "",
+        "",
+        "",
+    ),
+    (
+        "Kerasi Barber Co.",
+        "https://kerasi-barber.example",
+        "GR",
+        "Thessaloniki",
+        "Barbershop",
+        "",
+        "",
+        "",
+    ),
+    (
+        "Bella Nails & Beauty",
+        "https://bella-nails.example",
+        "GR",
+        "Athens",
+        "Nail salon",
+        "",
+        "",
+        "",
+    ),
+    (
+        "Salonica Hair Academy",
+        "https://salonica-academy.example",
+        "GR",
+        "Thessaloniki",
+        "Hairdressing school",
+        "Academy",
+        "",
+        "",
+    ),
+    (
+        "Cosmo Beauty Supplies",
+        "https://cosmo-supplies.example",
+        "GR",
+        "Athens",
+        "Cosmetics store",
+        "Supplier",
+        "",
+        "",
+    ),
+    (
+        "Studio Nine Hair",
+        "https://studio-nine.example",
+        "GR",
+        "Patras",
+        "Hair studio",
+        "Independent",
+        "",
+        "",
+    ),
+    # duplicates (accent-insensitive name; near-identical name)
+    ("Lumiere Hair Studio", "", "GR", "", "", "", "", ""),
+    ("Kerasi Barber Co", "", "GR", "", "", "", "", ""),
+]
 
 CSV_ROWS = [
     # name, website, country, city, industry, company_type, description, keywords
@@ -547,7 +759,7 @@ def render_page(domain: str, spec: dict, *, about: bool = False) -> str:
         country, city = spec["jsonld"]
         data = {
             "@context": "https://schema.org",
-            "@type": "Organization",
+            "@type": spec.get("type", "Organization"),
             "name": spec["name"],
             "url": f"https://{domain}",
             "description": spec["description"],
@@ -597,24 +809,27 @@ def main() -> None:
                 render_page(domain, spec, about=True), encoding="utf-8"
             )
 
-    with (DEMO / "synthetic_companies.csv").open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(
-            [
-                "name",
-                "website",
-                "country",
-                "city",
-                "industry",
-                "company_type",
-                "description",
-                "keywords",
-                "source_url",
-                "is_synthetic",
-            ]
-        )
-        for row in CSV_ROWS:
-            writer.writerow([*row, "https://example.org/synthetic-dataset", "true"])
+    header = [
+        "name",
+        "website",
+        "country",
+        "city",
+        "industry",
+        "company_type",
+        "description",
+        "keywords",
+        "source_url",
+        "is_synthetic",
+    ]
+    for old in DEMO.glob("*.csv"):
+        old.unlink()
+    datasets = {"agrifood_b2b": CSV_ROWS, "restaurants": RESTAURANT_ROWS, "hair_salons": SALON_ROWS}
+    for profile, rows in datasets.items():
+        with (DEMO / f"{profile}.csv").open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(header)
+            for row in rows:
+                writer.writerow([*row, "https://example.org/synthetic-dataset", "true"])
 
     mock = {
         "notice": BANNER,
@@ -629,6 +844,7 @@ def main() -> None:
                 "description": d,
                 "keywords": k,
                 "source_url": "https://example.org/synthetic-discovery",
+                "profile": "agrifood_b2b",
             }
             for n, w, c, city, i, t, d, k in MOCK_DISCOVERY
         ],
@@ -637,7 +853,8 @@ def main() -> None:
         json.dumps(mock, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     print(
-        f"wrote {len(SITE_SPECS)} sites, {len(CSV_ROWS)} CSV rows, {len(MOCK_DISCOVERY)} mock results"
+        f"wrote {len(SITE_SPECS)} sites, {len(datasets)} CSV datasets, "
+        f"{len(MOCK_DISCOVERY)} mock results"
     )
 
 

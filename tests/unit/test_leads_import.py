@@ -12,7 +12,7 @@ from app.services.leads import (
 
 
 def test_demo_csv_detects_duplicates_and_invalid_rows(db, demo_csv):
-    report = import_csv(db, demo_csv, "synthetic_companies.csv")
+    report = import_csv(db, demo_csv, "agrifood_b2b.csv", profile="agrifood_b2b")
     assert report.created == 24
     reasons = {d.name: d.reason for d in report.duplicates}
     assert reasons == {
@@ -27,8 +27,8 @@ def test_demo_csv_detects_duplicates_and_invalid_rows(db, demo_csv):
 
 
 def test_reimport_creates_nothing(db, demo_csv):
-    import_csv(db, demo_csv)
-    second = import_csv(db, demo_csv)
+    import_csv(db, demo_csv, profile="agrifood_b2b")
+    second = import_csv(db, demo_csv, profile="agrifood_b2b")
     assert second.created == 0
     assert len(second.duplicates) == 27
 
@@ -98,3 +98,24 @@ def test_find_possible_duplicates(db):
     db.commit()
     pairs = find_possible_duplicates(db, threshold=0.8)
     assert len(pairs) == 1 and pairs[0].country == "BG"
+
+
+def test_leads_take_the_import_profile(db, demo_csv_for):
+    from app.domain.profiles import ProfileError
+
+    report = import_csv(db, demo_csv_for("hair_salons"), profile="hair_salons")
+    assert report.profile == "hair_salons"
+    companies = db.query(Company).all()
+    assert {c.profile for c in companies} == {"hair_salons"}
+    lumiere = next(c for c in companies if c.name.startswith("Lumi"))
+    assert lumiere.industry == "hair_salon"
+    with pytest.raises(ProfileError):
+        import_csv(db, demo_csv_for("hair_salons"), profile="nope")
+
+
+def test_default_profile_is_used(db):
+    report = ingest(
+        db, [(1, CompanyIn(name="Ouzeri Test", country="GR", industry="Taverna"))], source="api"
+    )
+    assert report.profile == "restaurants"
+    assert db.query(Company).one().industry == "restaurant"

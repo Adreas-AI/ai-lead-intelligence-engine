@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api.deps import require_api_key
-from app.api.routes import crm, discovery, leads, pipeline, system
+from app.api.routes import crm, discovery, leads, pipeline, search, system
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import FixedWindowLimiter
@@ -24,9 +24,10 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=__version__,
         description=(
-            "B2B lead discovery, enrichment, explainable qualification and outreach "
-            "preparation for agri-food marketplaces. Outreach is drafted for human review "
-            "and never sent automatically."
+            "Describe the businesses you want in plain words (any language). The engine "
+            "finds them, enriches them from their own websites, scores them against an "
+            "Ideal Customer Profile with explanations, and drafts outreach for human "
+            "review. Nothing is sent automatically."
         ),
     )
     limiter = FixedWindowLimiter(settings.api_rate_limit_per_minute, 60)
@@ -63,7 +64,15 @@ def create_app() -> FastAPI:
 
     protected = [Depends(require_api_key)]
     app.include_router(system.public_router)
-    for router in (leads.router, discovery.router, pipeline.router, crm.router, system.router):
+    routers = (
+        search.router,
+        leads.router,
+        discovery.router,
+        pipeline.router,
+        crm.router,
+        system.router,
+    )
+    for router in routers:
         app.include_router(router, dependencies=protected)
     return app
 

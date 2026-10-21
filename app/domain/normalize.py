@@ -57,6 +57,17 @@ LEGAL_SUFFIXES = {
     "epe",
     "e p e",
     "lda",
+    # Greek legal forms (accent-folded): Ο.Ε., Ε.Ε., Α.Ε., Ε.Π.Ε., Ι.Κ.Ε.
+    "οε",
+    "ο ε",
+    "εε",
+    "ε ε",
+    "αε",
+    "α ε",
+    "επε",
+    "ε π ε",
+    "ικε",
+    "ι κ ε",
     "group",
     "holding",
     "holdings",
@@ -64,7 +75,7 @@ LEGAL_SUFFIXES = {
     "the",
 }
 
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+_NON_ALNUM = re.compile(r"[\W_]+")  # keeps letters of any script (e.g. Greek)
 _GENERIC_HOSTS = {
     "facebook.com",
     "instagram.com",
@@ -76,6 +87,24 @@ _GENERIC_HOSTS = {
     "goo.gl",
     "wikipedia.org",
     "wikidata.org",
+    "tiktok.com",
+    "pinterest.com",
+    "wa.me",
+    "linktr.ee",
+    "booking.com",
+    "tripadvisor.com",
+    "e-food.gr",
+    "wolt.com",
+    # webmail: a mailbox is not a company website
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "yahoo.gr",
+    "hotmail.com",
+    "hotmail.gr",
+    "outlook.com",
+    "live.com",
+    "otenet.gr",
 }
 
 
