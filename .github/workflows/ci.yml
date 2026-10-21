@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "ruff>=0.5"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: leads
+          POSTGRES_PASSWORD: leads
+          POSTGRES_DB: leads
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U leads" --health-interval 5s
+          --health-timeout 3s --health-retries 20
+    strategy:
+      matrix:
+        database: [sqlite, postgres]
+    env:
+      DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql+psycopg://leads:leads@localhost:5432/leads' || 'sqlite://' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install ".[dev,dashboard]"
+      - name: Migrations apply cleanly and match the models
+        if: matrix.database == 'postgres'
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+      - name: Tests
+        run: pytest --cov=app --cov-report=term-missing
+      - name: End-to-end demo
+        if: matrix.database == 'postgres'
+        env:
+          ENRICHMENT_MODE: offline
+          EXPORT_DIR: /tmp/exports
+        run: python scripts/run_demo.py --use-llm
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t lead-intelligence:ci .

@@ -1,0 +1,30 @@
+name,website,country,city,industry,company_type,description,keywords,source_url,is_synthetic
+Aegean Citrus Growers Cooperative,https://aegean-citrus.example,GR,Argos,Agriculture,Cooperative,,citrus;export,https://example.org/synthetic-dataset,true
+Kalamata Valley Olive Oil S.A.,https://kalamata-valley-olive.example,GR,Kalamata,Food manufacturing,Exporter,,olive oil,https://example.org/synthetic-dataset,true
+Thessaly Grain Traders,thessaly-grain.example,GR,Larissa,Import/Export,Trader,,grains,https://example.org/synthetic-dataset,true
+Andalucía Fresh Produce S.L.,https://andalucia-fresh.example,ES,Almería,Food wholesale,Wholesaler,,vegetables,https://example.org/synthetic-dataset,true
+Levante Citrus Export S.L.,https://levante-citrus.example,Spain,Valencia,Import export,Exporter,,,https://example.org/synthetic-dataset,true
+Sicilia Pistachio & Nut Co. S.r.l.,https://sicilia-nuts.example,IT,Bronte,Agriculture,Grower,,nuts,https://example.org/synthetic-dataset,true
+Po Valley Rice Mills S.p.A.,https://po-valley-rice.example,IT,Vercelli,Food processing,Manufacturer,,rice,https://example.org/synthetic-dataset,true
+Rotterdam Fresh Import B.V.,https://rotterdam-fresh-import.example,NL,Rotterdam,Import/Export,Importer,,fruit,https://example.org/synthetic-dataset,true
+Berlin Organic Wholesale GmbH,https://berlin-organic-wholesale.example,DE,Berlin,Food wholesale,Wholesaler,,organic,https://example.org/synthetic-dataset,true
+Danube Honey Producers,https://danube-honey.example,BG,Ruse,Agriculture,Cooperative,,honey,https://example.org/synthetic-dataset,true
+Carpathian Berry Farms SRL,https://carpathian-berries.example,RO,Brasov,Agriculture,Grower,,berries,https://example.org/synthetic-dataset,true
+Lisbon Foodservice Distribuição Lda,https://lisbon-foodservice.example,PT,Lisbon,Food distribution,Distributor,,horeca,https://example.org/synthetic-dataset,true
+Cyprus Halloumi & Dairy Ltd,https://cyprus-dairy.example,CY,Nicosia,Dairy,Manufacturer,,,https://example.org/synthetic-dataset,true
+Marmara Dried Fruit Exporters,https://marmara-dried-fruit.example,TR,Izmir,Import/Export,Exporter,,dried fruit,https://example.org/synthetic-dataset,true
+Nile Delta Agro Exports,https://nile-delta-agro.example,EG,Alexandria,Agriculture,Exporter,,,https://example.org/synthetic-dataset,true
+Atlas Spice Trading,https://atlas-spice.example,MA,Marrakesh,Trading,Trader,,spices,https://example.org/synthetic-dataset,true
+Corner Deli Athens,https://corner-deli.example,GR,Athens,Food retail,Retailer,,,https://example.org/synthetic-dataset,true
+Taverna Thalassa,https://taverna-thalassa.example,GR,Nafplio,Hospitality,Restaurant,,,https://example.org/synthetic-dataset,true
+AgriCloud Analytics,https://agricloud.example,GR,Thessaloniki,Software,Service provider,,saas,https://example.org/synthetic-dataset,true
+Golden State Almond Growers,https://golden-state-almonds.example,US,Fresno,Agriculture,Grower,,almonds,https://example.org/synthetic-dataset,true
+Olympus Agro Supplies,https://olympus-agro.example,GR,Katerini,,,,,https://example.org/synthetic-dataset,true
+Macedonia Fresh Logistics,https://macedonia-fresh.example,GR,Thessaloniki,Food distribution,Distributor,,,https://example.org/synthetic-dataset,true
+Peloponnese Fig Farm,,GR,Kalamata,Agriculture,Grower,Small family farm growing figs; sells dried figs to local packers.,figs,https://example.org/synthetic-dataset,true
+Unknown Trading Co,,,,,,,,https://example.org/synthetic-dataset,true
+Aegean Citrus Growers Co-operative,https://www.aegean-citrus.example/,GR,,,,,,https://example.org/synthetic-dataset,true
+KALAMATA VALLEY OLIVE OIL SA,,GR,,,,,,https://example.org/synthetic-dataset,true
+Thessaly Grain Trader,,GR,,,,,,https://example.org/synthetic-dataset,true
+X,https://tiny.example,GR,,,,,,https://example.org/synthetic-dataset,true
+Atlantis Olive Imports,https://atlantis.example,Atlantis,,,,,,https://example.org/synthetic-dataset,true

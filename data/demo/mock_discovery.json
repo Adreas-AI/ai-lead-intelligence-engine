@@ -1,0 +1,96 @@
+{
+  "notice": "SYNTHETIC DEMO DATA - fictional company for demonstration purposes only.",
+  "companies": [
+    {
+      "name": "Crete Avocado Growers",
+      "website": "https://crete-avocado.example",
+      "country": "GR",
+      "city": "Chania",
+      "industry": "Agriculture",
+      "company_type": "Grower",
+      "description": "Avocado grower on Crete.",
+      "keywords": [
+        "avocados"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Puglia Durum Wheat Consortium",
+      "website": "https://puglia-durum.example",
+      "country": "IT",
+      "city": "Foggia",
+      "industry": "Agriculture",
+      "company_type": "Cooperative",
+      "description": "Durum wheat producer consortium.",
+      "keywords": [
+        "wheat"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Murcia Lettuce Exporters S.L.",
+      "website": "https://murcia-lettuce.example",
+      "country": "ES",
+      "city": "Murcia",
+      "industry": "Import/Export",
+      "company_type": "Exporter",
+      "description": "Leafy greens exporter.",
+      "keywords": [
+        "lettuce"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Mazovia Apple Union",
+      "website": "https://mazovia-apples.example",
+      "country": "PL",
+      "city": "Grójec",
+      "industry": "Agriculture",
+      "company_type": "Cooperative",
+      "description": "Apple growers' union.",
+      "keywords": [
+        "apples"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Szeged Paprika Traders Kft.",
+      "website": "https://szeged-paprika.example",
+      "country": "HU",
+      "city": "Szeged",
+      "industry": "Trading",
+      "company_type": "Trader",
+      "description": "Paprika and spice trader.",
+      "keywords": [
+        "paprika"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Lyon Fresh Distribution SAS",
+      "website": "https://lyon-fresh.example",
+      "country": "FR",
+      "city": "Lyon",
+      "industry": "Food distribution",
+      "company_type": "Distributor",
+      "description": "Foodservice fruit & veg distributor.",
+      "keywords": [
+        "foodservice"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    },
+    {
+      "name": "Andalucia Fresh Produce SL",
+      "website": "https://andalucia-fresh.example",
+      "country": "ES",
+      "city": "Almería",
+      "industry": "Food wholesale",
+      "company_type": "Wholesaler",
+      "description": "Almería vegetable wholesaler.",
+      "keywords": [
+        "vegetables"
+      ],
+      "source_url": "https://example.org/synthetic-discovery"
+    }
+  ]
+}

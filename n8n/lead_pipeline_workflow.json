@@ -1,0 +1,116 @@
+{
+  "name": "Lead Intelligence - weekly discovery & qualification",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "weeks", "triggerAtDay": [1], "triggerAtHour": 7 }] }
+      },
+      "id": "a1f0c6f2-0001-4c55-9a44-000000000001",
+      "name": "Every Monday 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {},
+      "id": "a1f0c6f2-0002-4c55-9a44-000000000002",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/discovery/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"provider\": \"wikidata\",\n  \"countries\": [\"GR\", \"CY\", \"IT\", \"ES\"],\n  \"industries\": [\"agriculture\", \"food_wholesale\", \"food_distribution\"],\n  \"limit\": 50,\n  \"save\": true\n}",
+        "options": { "timeout": 120000 }
+      },
+      "id": "a1f0c6f2-0003-4c55-9a44-000000000003",
+      "name": "Discover leads (Wikidata)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:8000/pipeline/run",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"enrich\": true, \"score\": true, \"draft\": true, \"use_llm\": false, \"limit\": 200 }",
+        "options": { "timeout": 600000 }
+      },
+      "id": "a1f0c6f2-0004-4c55-9a44-000000000004",
+      "name": "Enrich, score, draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [520, 100]
+    },
+    {
+      "parameters": {
+        "url": "http://api:8000/analytics/summary",
+        "options": {}
+      },
+      "id": "a1f0c6f2-0005-4c55-9a44-000000000005",
+      "name": "Pipeline summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Enrich, score, draft').item.json.outreach.succeeded }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1f0c6f2-0006-4c55-9a44-000000000006",
+      "name": "New drafts to review?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1040, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m1",
+              "name": "message",
+              "value": "={{ $('Enrich, score, draft').item.json.outreach.succeeded }} new outreach drafts await review. Qualified leads: {{ $json.qualified_leads }} / {{ $json.total_leads }}. Review them in the dashboard; nothing has been sent.",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1f0c6f2-0007-4c55-9a44-000000000007",
+      "name": "Review reminder (connect Slack/Email here)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1300, 0]
+    }
+  ],
+  "connections": {
+    "Every Monday 07:00": { "main": [[{ "node": "Discover leads (Wikidata)", "type": "main", "index": 0 }]] },
+    "Run manually": { "main": [[{ "node": "Discover leads (Wikidata)", "type": "main", "index": 0 }]] },
+    "Discover leads (Wikidata)": { "main": [[{ "node": "Enrich, score, draft", "type": "main", "index": 0 }]] },
+    "Enrich, score, draft": { "main": [[{ "node": "Pipeline summary", "type": "main", "index": 0 }]] },
+    "Pipeline summary": { "main": [[{ "node": "New drafts to review?", "type": "main", "index": 0 }]] },
+    "New drafts to review?": { "main": [[{ "node": "Review reminder (connect Slack/Email here)", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}
