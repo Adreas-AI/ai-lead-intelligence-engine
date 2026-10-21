@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # "offline": never touch the network (fixtures only).
     enrichment_mode: Literal["auto", "offline"] = "auto"
     http_user_agent: str = (
-        "AILeadIntelligenceEngine/0.1 (+https://github.com/your-org/ai-lead-intelligence-engine)"
+        "AILeadIntelligenceEngine/0.1 (+https://github.com/Adreas-AI/ai-lead-intelligence-engine)"
     )
     http_timeout_seconds: float = 10.0
     http_max_retries: int = 3

@@ -1,5 +1,9 @@
 # AI Lead Intelligence Engine
 
+[![CI](https://github.com/Adreas-AI/ai-lead-intelligence-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Adreas-AI/ai-lead-intelligence-engine/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 An end-to-end B2B lead engine for agri-food marketplaces. It finds companies, enriches them from their own websites, scores them with explainable rules (plus an optional LLM review), drafts outreach for a person to review, and exports the qualified leads to CSV or HubSpot.
 
 The target customers it is built around are agricultural producers, cooperatives, food wholesalers, distributors and import/export traders: the supply and demand sides of a B2B agricultural marketplace.
@@ -134,7 +138,7 @@ tests/             unit and integration tests (no network, no keys)
 ### Option A: Docker Compose (recommended)
 
 ```bash
-git clone https://github.com/your-org/ai-lead-intelligence-engine.git
+git clone https://github.com/Adreas-AI/ai-lead-intelligence-engine.git
 cd ai-lead-intelligence-engine
 cp .env.example .env            # optional: works without any keys
 docker compose up -d --build
@@ -430,4 +434,4 @@ The API already exposes pipeline counts, conversion rates between stages, duplic
 
 ## Licence
 
-MIT. The demo dataset is synthetic and fictional.
+[MIT](LICENSE). The demo dataset is synthetic and fictional.
