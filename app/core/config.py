@@ -62,8 +62,9 @@ class Settings(BaseSettings):
     osm_timeout_seconds: float = 120.0
     google_places_api_key: SecretStr | None = None
     google_places_url: str = "https://places.googleapis.com/v1/places:searchText"
-    # USD per request. Check the Google Maps Platform price list for your SKU.
-    google_places_cost_per_request: float = 0.032
+    # USD per request: requesting websiteUri bills the Text Search *Enterprise* SKU
+    # ($35 per 1,000 after 1,000 free calls/month, Oct 2026). Check the current price list.
+    google_places_cost_per_request: float = 0.035
 
     # --- Outbound HTTP / enrichment -------------------------------------------
     # "auto": fetch real websites; synthetic *.example domains use local fixtures.
