@@ -56,9 +56,8 @@ def reset_synthetic() -> None:
 
 
 def ensure_schema() -> None:
-    from alembic.config import Config
-
     from alembic import command
+    from alembic.config import Config
 
     command.upgrade(Config(str(ROOT / "alembic.ini")), "head")
 

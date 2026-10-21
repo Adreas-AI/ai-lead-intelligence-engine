@@ -57,3 +57,6 @@ ignore = [
 
 [tool.coverage.run]
 source = ["app"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
