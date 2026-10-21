@@ -48,7 +48,13 @@ def engine():
     Base.metadata.drop_all(eng)
     Base.metadata.create_all(eng)
     yield eng
-    Base.metadata.drop_all(eng)
+    if eng.dialect.name == "postgresql":
+        # Fail fast instead of hanging if a test leaked a session holding a lock.
+        with eng.begin() as conn:
+            conn.exec_driver_sql("SET lock_timeout = '10s'")
+            Base.metadata.drop_all(conn)
+    else:
+        Base.metadata.drop_all(eng)
     eng.dispose()
 
 

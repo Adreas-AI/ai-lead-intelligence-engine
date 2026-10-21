@@ -11,6 +11,7 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,6 +23,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -52,6 +54,7 @@ jobs:
           alembic check
           alembic downgrade base
       - name: Tests
+        timeout-minutes: 10
         run: pytest --cov=app --cov-report=term-missing
       - name: End-to-end demo
         if: matrix.database == 'postgres'
@@ -62,6 +65,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t lead-intelligence:ci .

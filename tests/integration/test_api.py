@@ -206,7 +206,12 @@ def test_api_key_and_rate_limit(engine, settings):
     from sqlalchemy.orm import sessionmaker
 
     factory = sessionmaker(bind=engine)
-    app.dependency_overrides[deps.get_db] = lambda: (yield factory())
+
+    def _db():
+        with factory() as session:  # always closed, so no lock outlives the request
+            yield session
+
+    app.dependency_overrides[deps.get_db] = _db
     app.dependency_overrides[get_settings] = lambda: secured
     with TestClient(app) as c:
         assert c.get("/leads").status_code == 401
